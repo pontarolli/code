@@ -138,3 +138,6 @@ STACK LEVEL: 0
 I2C ADDRESS: 0x50
 
 sudo i2cdetect -y 1
+
+
+sudo apt-get install virtualbox-guest-dkms
