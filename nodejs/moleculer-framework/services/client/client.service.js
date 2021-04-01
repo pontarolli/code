@@ -13,10 +13,10 @@ broker.createService({
 // Start the broker
 broker.start()
     // Call the service
-    .then(() => broker.call("math.add", { a: 5, b: 3 }))
+    // .then(() => broker.call("math.add", { a: 5, b: 3 }))
     // Print the response
-    .then(res => console.log("5 + 3 =", res))
-    .catch(err => console.error(`Error occured! ${err.message}`))
+    // .then(res => console.log("5 + 3 =", res))
+    // .catch(err => console.error(`Error occured! ${err.message}`))
     
     // Call the service
     //.then(() => broker.call("greeter.hello"))
@@ -25,6 +25,6 @@ broker.start()
     //.then(res => console.log("response =", res))
     //.catch(err => console.error(`Error occured! ${err.message}`))
     
-    // Switch to REPL mode
-    //.then(() => {broker.repl();});
+    //Switch to REPL mode
+    .then(() => {broker.repl();});
  
