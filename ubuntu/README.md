@@ -141,3 +141,7 @@ sudo i2cdetect -y 1
 
 
 sudo apt-get install virtualbox-guest-dkms
+
+### Manipulando pastas
+Remover pasta e seus subdiretorios e arquivos 
+`rm -r nomepasta`
