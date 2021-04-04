@@ -25,6 +25,20 @@ const I2C_MEM_OPTO_FALLING_ENABLE = 104;
 const I2C_MEM_OPTO_CH_CONT_RESET  = 105;
 const I2C_MEM_OPTO_COUNT1         = 106;  //2 bytes integers
 
+const I2C_RTC_YEAR_ADD       = 70
+const I2C_RTC_MONTH_ADD      = 71
+const I2C_RTC_DAY_ADD        = 72
+const I2C_RTC_HOUR_ADD       = 73
+const I2C_RTC_MINUTE_ADD     = 74
+const I2C_RTC_SECOND_ADD     = 75
+const I2C_RTC_SET_YEAR_ADD   = 76
+const I2C_RTC_SET_MONTH_ADD  = 77
+const I2C_RTC_SET_DAY_ADD    = 78
+const I2C_RTC_SET_HOUR_ADD   = 79
+const I2C_RTC_SET_MINUTE_ADD = 80
+const I2C_RTC_SET_SECOND_ADD = 81
+const I2C_RTC_CMD_ADD        = 82
+
 let data = {    
     raspberrypi: {
         nodeID: undefined,
@@ -34,8 +48,18 @@ let data = {
         firmware: undefined,
         temperature: undefined,
         power: undefined,
+        rtc_utc: undefined,
+        rtc_local: undefined,
+  
+    },
+    inputs: {
+        voltage_0_10V: {
+            channel_1: undefined,
+            channel_2: undefined,
+            channel_3: undefined,
+            channel_4: undefined
+        }
     }
-
 }
 
 const broker = new ServiceBroker({
@@ -67,6 +91,56 @@ broker.createService({
     name: "daq",
 
     actions: {
+
+        // Get the internal RTC  date and time(yy/mm/dd hh:mm:ss) ISO 8601
+        rtcrd: {
+            params: {
+				stack  : { type: "number", integer: true, min: 0, max: 7},
+			},
+
+			async handler(ctx) {
+
+                let addr = DEFAULT_HW_ADD + ctx.params.stack
+                let cmd = I2C_RTC_YEAR_ADD
+                let length = 6
+                let buffer = Buffer.alloc(6)
+				return await i2c.openPromisified(1)
+					.then(i2c1 => i2c1.readI2cBlock(addr, cmd, length, buffer)
+						.then((rawData) => {
+							i2c1.close()   
+
+                            let year   = 2000 + (rawData.buffer.readIntLE(0, 1))
+                            let month  = (rawData.buffer.readIntLE(1, 1)) - 1 //Um valor inteiro que representa o mês, começando com 0 para Janeiro até 11 para Dezembro.
+                            let day    = rawData.buffer.readIntLE(2, 1)
+                            let hour   = rawData.buffer.readIntLE(3, 1)
+                            let minute = rawData.buffer.readIntLE(4, 1)
+                            let second = rawData.buffer.readIntLE(5, 1)
+
+                            data.megaind.rtc_utc = new Date(Date.UTC(year, month, day, hour, minute, second));
+                            
+                            const option = {
+                                year        : 'numeric',
+                                month       : ('long' || 'short' || 'numeric'),
+                                weekday     : ('long' || 'short'),
+                                day         : 'numeric',
+                                hour        : 'numeric',
+                                minute      : 'numeric',
+                                second      : 'numeric',
+                        //      era         : ('long' || 'short'),
+                                timeZoneName: ('long' || 'short')
+                            }
+
+                            const locale    = 'pt-br'
+                            data.megaind.rtc_local = data.megaind.rtc_utc.toLocaleDateString(locale, option)
+						})
+						.catch((error) => {return `Error occured! ${error.message}`})
+					)
+					.catch((error) => {return `Error occured! ${error.message}`})
+			}
+        },
+
+
+
 
 
         // Display the board status and firmware version number
@@ -121,8 +195,9 @@ broker.createService({
 				return await i2c.openPromisified(1)
 					.then(i2c1 => i2c1.readI2cBlock(addr, cmd, length, buffer)
 						.then((rawData) => {
-							i2c1.close()                                 
-							return Math.round((rawData.buffer.readIntLE(0, 2)/1000.0) * 1e2 ) / 1e2
+							i2c1.close()       
+                            data.inputs.voltage_0_10V.channel_1 = Math.round((rawData.buffer.readIntLE(0, 2)/1000.0) * 1e2 ) / 1e2                         
+							return data.inputs.voltage_0_10V.channel_1
 						})
 						.catch((error) => {return `Error occured! ${error.message}`})
 					)
@@ -313,7 +388,7 @@ broker.start()
 // 		if (err.data)
 // 			broker.logger.error("Error data:", err.data);
 // 	});
-broker.repl()
+// broker.repl()
 
 
 // call daq.uinrd --stack 0 --channel 4
@@ -321,23 +396,31 @@ broker.repl()
 // call daq.readI2cBlock --stack 0
 // call daq.uoutrd --stack 0 --channel 4
 // call daq.board --stack 0
+// call daq.rtcrd --stack 0
+
 
 // call daq.uoutwr --stack 0 --channel 4 --value 4
 // call daq.ioutwr --stack 0 --channel 4 --value 4.4
 
-    // .then(() => {
-    //     setInterval(() => {
-    //         broker.call("daq.readI2cBlock", { stack: 0 })
-    //         .then(res => {
-    //             broker.logger.info(res)
-    //         })
-    //      	.catch(err => {
-    //             broker.logger.error(`Error occurred! Action: '${err.ctx.action.name}', Message: ${err.code} - ${err.message}`);
-    //             if (err.data)
-    //                 broker.logger.error("Error data:", err.data);
-    //         })
-    //     }, 1000);
-    // });
+    .then(() => {
+        setInterval(() => {
+            // broker.call("daq.readI2cBlock", { stack: 0 })
+            broker.call("daq.rtcrd", { stack: 0 })
+
+            .then(()=> broker.call("daq.uinrd", {stack:0, channel: 4}))
+            
+            
+            .then(res => {
+                //broker.logger.info(res)
+                broker.logger.info(data)
+            })
+         	.catch(err => {
+                broker.logger.error(`Error occurred! Action: '${err.ctx.action.name}', Message: ${err.code} - ${err.message}`);
+                if (err.data)
+                    broker.logger.error("Error data:", err.data);
+            })
+        }, 1000);
+    });
 
 
 
@@ -353,7 +436,7 @@ broker.repl()
         -warranty       Display the warranty
         -list:          List all megaind boards connected
                         return the # of boards and stack level for every board
-        board           Display the board status and firmware version number
+        board           Display the board status and firmware version number - ok
         optord:         Read dry opto status
         countrd:        Read dry opto transitions count
         countrst:       Reset opto transitions countors
