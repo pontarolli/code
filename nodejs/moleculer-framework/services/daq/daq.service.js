@@ -42,24 +42,49 @@ const I2C_RTC_CMD_ADD        = 82
 let data = {    
     raspberrypi: {
         nodeID: undefined,
-        power: undefined,
+        power : undefined,
     },
     megaind: {
-        firmware: undefined,
-        temperature: undefined,
-        power: undefined,
-        rtc_utc: undefined,
-        rtc_local: undefined,
-  
+        board: {
+            firmware   : undefined,
+            temperature: undefined,
+            power      : undefined,
+        },
+        rtc_utc    : undefined,
+        rtc_local  : undefined,
+        
+        uoutrd: {
+            description: 'Read 0-10V Output voltage value(V)',
+            channel_1  : undefined,
+            channel_2  : undefined,
+            channel_3  : undefined,
+            channel_4  : undefined,
+        },
+        
+        uinrd: {
+            description: 'Read 0-10V input value (V)',
+            channel_1  : undefined,
+            channel_2  : undefined,
+            channel_3  : undefined,
+            channel_4  : undefined,
+        },
+
+        ioutrd: {
+            description: 'Read 4-20mA Output current value (mA)',
+            channel_1  : undefined,
+            channel_2  : undefined,
+            channel_3  : undefined,
+            channel_4  : undefined,
+        },
+
+        iinrd: {
+            description: 'Read 4-20mA input value (mA)',
+            channel_1  : undefined,
+            channel_2  : undefined,
+            channel_3  : undefined,
+            channel_4  : undefined,
+        },
     },
-    inputs: {
-        voltage_0_10V: {
-            channel_1: undefined,
-            channel_2: undefined,
-            channel_3: undefined,
-            channel_4: undefined
-        }
-    }
 }
 
 const broker = new ServiceBroker({
@@ -92,8 +117,10 @@ broker.createService({
 
     actions: {
 
-        // Get the internal RTC  date and time(yy/mm/dd hh:mm:ss) ISO 8601
-        rtcrd: {
+        // Display the board status and firmware version number
+        // Firmware ver 01.04, CPU temperature 38 C, Power source 23.77 V, Raspberry 5.22 V
+        // call daq.board --stack 0
+        board: {
             params: {
 				stack  : { type: "number", integer: true, min: 0, max: 7},
 			},
@@ -101,13 +128,213 @@ broker.createService({
 			async handler(ctx) {
 
                 let addr = DEFAULT_HW_ADD + ctx.params.stack
-                let cmd = I2C_RTC_YEAR_ADD
-                let length = 6
-                let buffer = Buffer.alloc(6)
+                let cmd = I2C_MEM_DIAG_TEMPERATURE
+                let length = 8
+                let buffer = Buffer.alloc(8)
+
 				return await i2c.openPromisified(1)
 					.then(i2c1 => i2c1.readI2cBlock(addr, cmd, length, buffer)
 						.then((rawData) => {
-							i2c1.close()   
+							i2c1.close()                                
+                            data.megaind.board.temperature = rawData.buffer.readIntLE(0, 1)
+                            data.megaind.board.power = Math.round((rawData.buffer.readIntLE(1, 2)/1000.0) * 1e2 ) / 1e2
+                            data.raspberrypi.power = Math.round((rawData.buffer.readIntLE(3, 3)/1000.0) * 1e2 ) / 1e2
+                            let major = rawData.buffer.readIntLE(6, 1)
+                            let minor = rawData.buffer.readIntLE(7, 1)
+                            data.megaind.board.firmware = major + minor / 100.0
+                            broker.logger.info(data)
+						})
+						.catch((error) => {return `Error occured! ${error.message}`})
+					)
+					.catch((error) => {return `Error occured! ${error.message}`})
+			}
+        },
+
+        // Read 0-10V Output voltage value(V)
+        uoutrd: {
+            
+			params: {
+				stack  : { type: "number", integer: true, min: 0, max: 7},
+				channel: { type: "number", positive: true, integer: true, min: 1, max: 4}
+			},
+
+			async handler(ctx) {
+
+                let addr = DEFAULT_HW_ADD + ctx.params.stack
+                let cmd = I2C_MEM_U0_10_OUT_VAL1 + (ctx.params.channel - 1)*2
+                let length = 2
+                let buffer = Buffer.alloc(2)
+
+				return await i2c.openPromisified(1)
+					.then(i2c1 => i2c1.readI2cBlock(addr, cmd, length, buffer)
+						.then((rawData) => {
+							i2c1.close()    
+                            return data.megaind.uoutrd[`channel_${ctx.params.channel}`] = Math.round((rawData.buffer.readIntLE(0, 2)/1000.0) * 1e2 ) / 1e2                              
+						})
+						.catch((error) => {return `Error occured! ${error.message}`})
+					)
+					.catch((error) => {return `Error occured! ${error.message}`})
+			}
+		},
+
+		// Read 0-10V input value (V)
+        uinrd: {
+            
+			params: {
+				stack  : { type: "number", integer: true, min: 0, max: 7},
+				channel: { type: "number", positive: true, integer: true, min: 1, max: 4}
+			},
+
+			async handler(ctx) {
+
+                let addr   = DEFAULT_HW_ADD + ctx.params.stack
+                let cmd    = I2C_MEM_U0_10_IN_VAL1 + (ctx.params.channel - 1) * 2
+                let length = 2
+                let buffer = Buffer.alloc(2)
+
+				return await i2c.openPromisified(1)
+					.then(i2c1 => i2c1.readI2cBlock(addr, cmd, length, buffer)
+						.then((rawData) => {
+							i2c1.close()       
+                            return data.megaind.uinrd[`channel_${ctx.params.channel}`] = Math.round((rawData.buffer.readIntLE(0, 2)/1000.0) * 1e2 ) / 1e2 
+						})
+						.catch((error) => {return `Error occured! ${error.message}`})
+					)
+					.catch((error) => {return `Error occured! ${error.message}`})
+			}
+		},
+
+        // Read 4-20mA input value (mA) 
+        iinrd: {
+    
+            params: {
+                stack  : { type: "number", integer: true, min: 0, max: 7},
+                channel: { type: "number", positive: true, integer: true, min: 1, max: 4}
+            },
+
+            async handler(ctx) {
+
+                let addr = DEFAULT_HW_ADD + ctx.params.stack
+                let cmd = I2C_MEM_I4_20_IN_VAL1 + (ctx.params.channel - 1)*2
+                let length = 2
+                let buffer = Buffer.alloc(2)
+
+                return await i2c.openPromisified(1)
+                    .then(i2c1 => i2c1.readI2cBlock(addr, cmd, length, buffer)
+                        .then((rawData) => {
+                            i2c1.close()  
+                            return data.megaind.iinrd[`channel_${ctx.params.channel}`] = Math.round((rawData.buffer.readIntLE(0, 2)/1000.0) * 1e2 ) / 1e2 
+                        })
+                        .catch((error) => {return `Error occured! ${error.message}`})
+                    )
+                    .catch((error) => {return `Error occured! ${error.message}`})
+            }
+        },
+
+        // Read All data
+        data: {
+            handler(){
+                return data 
+            }            
+        },
+
+        // Write 0-10V output voltage value (V)
+        uoutwr: {
+    
+            params: {
+                stack  : { type: "number", integer: true, min: 0, max: 7},
+                channel: { type: "number", positive: true, integer: true, min: 1, max: 4},
+                value  : { type: "number", positive: true, min: 0, max: 10}
+            },
+
+            async handler(ctx) {
+
+                let addr = DEFAULT_HW_ADD + ctx.params.stack
+                let cmd  = I2C_MEM_U0_10_OUT_VAL1 + (ctx.params.channel - 1)*2
+                let word = Math.round(ctx.params.value * 1000)                  // range 0 to 65535 in word but in the program range 0 to 1000 is equal 0 to 10V
+                
+                return await i2c.openPromisified(1)
+                    .then(i2c1 => i2c1.writeWord(addr, cmd, word)
+                        .then((rawData) => {
+                            i2c1.close()                                 
+                            return 'Success!'
+                        })
+                        .catch((error) => {return `Error occured! ${error.message}`})
+                    )
+                    .catch((error) => {return `Error occured! ${error.message}`})
+            }
+        },
+
+        // Write 4-20mA output value (mA)
+        ioutwr: {
+    
+            params: {
+                stack  : { type: "number", integer: true, min: 0, max: 7},
+                channel: { type: "number", positive: true, integer: true, min: 1, max: 4},
+                value  : { type: "number", positive: true, min: 4, max: 20}
+            },
+
+            async handler(ctx) {
+
+                let addr = DEFAULT_HW_ADD + ctx.params.stack
+                let cmd = I2C_MEM_I4_20_OUT_VAL1 + (ctx.params.channel - 1)*2
+                let word = Math.round(ctx.params.value * 1000) // range 0 to 65535 in word but in the program range 0 to 1000 is equal 0 to 10V
+                
+                return await i2c.openPromisified(1)
+                    .then(i2c1 => i2c1.writeWord(addr, cmd, word)
+                        .then((rawData) => {
+                            i2c1.close()                                 
+                            return 'Success!'
+                        })
+                        .catch((error) => {return `Error occured! ${error.message}`})
+                    )
+                    .catch((error) => {return `Error occured! ${error.message}`})
+            }
+        },
+
+        // Read 4-20mA Output current value (mA)
+        ioutrd: {
+    
+            params: {
+                stack  : { type: "number", integer: true, min: 0, max: 7},
+                channel: { type: "number", positive: true, integer: true, min: 1, max: 4}
+            },
+
+            async handler(ctx) {
+
+                let addr = DEFAULT_HW_ADD + ctx.params.stack
+                let cmd = I2C_MEM_I4_20_OUT_VAL1 + (ctx.params.channel - 1)*2
+                let length = 2
+                let buffer = Buffer.alloc(2)
+
+                return await i2c.openPromisified(1)
+                    .then(i2c1 => i2c1.readI2cBlock(addr, cmd, length, buffer)
+                        .then((rawData) => {
+                            i2c1.close()    
+                            return data.megaind.ioutrd[`channel_${ctx.params.channel}`] = Math.round((rawData.buffer.readIntLE(0, 2)/1000.0) * 1e2 ) / 1e2                              
+                        })
+                        .catch((error) => {return `Error occured! ${error.message}`})
+                    )
+                    .catch((error) => {return `Error occured! ${error.message}`})
+            }
+        },
+
+        // Get the internal RTC  date and time(yy/mm/dd hh:mm:ss) ISO 8601
+        rtcrd: {
+            params: {
+                stack  : { type: "number", integer: true, min: 0, max: 7},
+            },
+
+            async handler(ctx) {
+
+                let addr = DEFAULT_HW_ADD + ctx.params.stack
+                let cmd = I2C_RTC_YEAR_ADD
+                let length = 6
+                let buffer = Buffer.alloc(6)
+                return await i2c.openPromisified(1)
+                    .then(i2c1 => i2c1.readI2cBlock(addr, cmd, length, buffer)
+                        .then((rawData) => {
+                            i2c1.close()   
 
                             let year   = 2000 + (rawData.buffer.readIntLE(0, 1))
                             let month  = (rawData.buffer.readIntLE(1, 1)) - 1 //Um valor inteiro que representa o mês, começando com 0 para Janeiro até 11 para Dezembro.
@@ -132,290 +359,61 @@ broker.createService({
 
                             const locale    = 'pt-br'
                             data.megaind.rtc_local = data.megaind.rtc_utc.toLocaleDateString(locale, option)
-						})
-						.catch((error) => {return `Error occured! ${error.message}`})
-					)
-					.catch((error) => {return `Error occured! ${error.message}`})
-			}
-        },
-
-
-
-
-
-        // Display the board status and firmware version number
-        // Firmware ver 01.04, CPU temperature 38 C, Power source 23.77 V, Raspberry 5.22 V
-        // call daq.board --stack 0
-        board: {
-            params: {
-				stack  : { type: "number", integer: true, min: 0, max: 7},
-			},
-
-			async handler(ctx) {
-
-                let addr = DEFAULT_HW_ADD + ctx.params.stack
-                let cmd = I2C_MEM_DIAG_TEMPERATURE
-                let length = 8
-                let buffer = Buffer.alloc(8)
-
-				return await i2c.openPromisified(1)
-					.then(i2c1 => i2c1.readI2cBlock(addr, cmd, length, buffer)
-						.then((rawData) => {
-							i2c1.close()                                
-                            data.megaind.temperature = rawData.buffer.readIntLE(0, 1)
-                            data.megaind.power = Math.round((rawData.buffer.readIntLE(1, 2)/1000.0) * 1e2 ) / 1e2
-                            data.raspberrypi.power = Math.round((rawData.buffer.readIntLE(3, 3)/1000.0) * 1e2 ) / 1e2
-                            let major = rawData.buffer.readIntLE(6, 1)
-                            let minor = rawData.buffer.readIntLE(7, 1)
-                            data.megaind.firmware = major + minor / 100.0
-                            broker.logger.info(data)
-						})
-						.catch((error) => {return `Error occured! ${error.message}`})
-					)
-					.catch((error) => {return `Error occured! ${error.message}`})
-			}
-        },
-
-
-		// Read 0-10V input value (V)
-        uinrd: {
-            
-			params: {
-				stack  : { type: "number", integer: true, min: 0, max: 7},
-				channel: { type: "number", positive: true, integer: true, min: 1, max: 4}
-			},
-
-			async handler(ctx) {
-
-                let addr = DEFAULT_HW_ADD + ctx.params.stack
-                let cmd = I2C_MEM_U0_10_IN_VAL1 + (ctx.params.channel - 1)*2
-                let length = 2
-                let buffer = Buffer.alloc(2)
-
-				return await i2c.openPromisified(1)
-					.then(i2c1 => i2c1.readI2cBlock(addr, cmd, length, buffer)
-						.then((rawData) => {
-							i2c1.close()       
-                            data.inputs.voltage_0_10V.channel_1 = Math.round((rawData.buffer.readIntLE(0, 2)/1000.0) * 1e2 ) / 1e2                         
-							return data.inputs.voltage_0_10V.channel_1
-						})
-						.catch((error) => {return `Error occured! ${error.message}`})
-					)
-					.catch((error) => {return `Error occured! ${error.message}`})
-			}
-		},
-
-
-
-
-
-        // Read 4-20mA input value (mA) 
-        iinrd: {
-    
-            params: {
-                stack  : { type: "number", integer: true, min: 0, max: 7},
-                channel: { type: "number", positive: true, integer: true, min: 1, max: 4}
-            },
-
-            async handler(ctx) {
-
-                let addr = DEFAULT_HW_ADD + ctx.params.stack
-                let cmd = I2C_MEM_I4_20_IN_VAL1 + (ctx.params.channel - 1)*2
-                let length = 2
-                let buffer = Buffer.alloc(2)
-
-                return await i2c.openPromisified(1)
-                    .then(i2c1 => i2c1.readI2cBlock(addr, cmd, length, buffer)
-                        .then((rawData) => {
-                            i2c1.close()                                 
-                            return Math.round((rawData.buffer.readIntLE(0, 2)/1000.0) * 1e2 ) / 1e2
                         })
                         .catch((error) => {return `Error occured! ${error.message}`})
                     )
                     .catch((error) => {return `Error occured! ${error.message}`})
             }
         },
-
-
-
-
-
-        // Reads a block of bytes from a device max 32
-        readI2cBlock: {
-    
-            params: {
-                stack  : { type: "number", integer: true, min: 0, max: 7},                
-            },
-
-            async handler(ctx) {
-
-                let addr = DEFAULT_HW_ADD + ctx.params.stack
-                let cmd = I2C_MEM_U0_10_IN_VAL1
-                let length = 24
-                let buffer = Buffer.alloc(24)
-
-                return await i2c.openPromisified(1)
-                    .then(i2c1 => i2c1.readI2cBlock(addr, cmd, length, buffer)
-                        .then((rawData) => {
-                            i2c1.close()    
-                            
-                            broker.logger.info(rawData.buffer)  
-                            
-                            data.inputs.voltage_0_10V.channel_1 = Math.round((rawData.buffer.readIntLE(0, 2)/1000.0) * 1e2 ) / 1e2                           
-                            data.inputs.voltage_0_10V.channel_2 = Math.round((rawData.buffer.readIntLE(2, 2)/1000.0) * 1e2 ) / 1e2   
-                            data.inputs.voltage_0_10V.channel_3 = Math.round((rawData.buffer.readIntLE(4, 2)/1000.0) * 1e2 ) / 1e2   
-                            data.inputs.voltage_0_10V.channel_4 = Math.round((rawData.buffer.readIntLE(6, 2)/1000.0) * 1e2 ) / 1e2   
-
-                            data.inputs.current_4_20mA.channel_1 = Math.round((rawData.buffer.readIntLE(16, 2)/1000.0) * 1e2 ) / 1e2                           
-                            data.inputs.current_4_20mA.channel_2 = Math.round((rawData.buffer.readIntLE(18, 2)/1000.0) * 1e2 ) / 1e2   
-                            data.inputs.current_4_20mA.channel_3 = Math.round((rawData.buffer.readIntLE(20, 2)/1000.0) * 1e2 ) / 1e2   
-                            data.inputs.current_4_20mA.channel_4 = Math.round((rawData.buffer.readIntLE(22, 2)/1000.0) * 1e2 ) / 1e2   
-
-                            broker.logger.info(data)  
-                            
-                            return "Read done!"
-                        })
-                        .catch((error) => {return `Error occured! ${error.message}`})
-                    )
-                    .catch((error) => {return `Error occured! ${error.message}`})
-            }
-        },
-
-        // Read All data
-        data: {
-            handler(){
-                return data 
-            }            
-        },
-
-
-        //  Read 0-10V Output voltage value(V)
-        uoutrd: {
-            
-			params: {
-				stack  : { type: "number", integer: true, min: 0, max: 7},
-				channel: { type: "number", positive: true, integer: true, min: 1, max: 4}
-			},
-
-			async handler(ctx) {
-
-                let addr = DEFAULT_HW_ADD + ctx.params.stack
-                let cmd = I2C_MEM_U0_10_OUT_VAL1 + (ctx.params.channel - 1)*2
-                let length = 2
-                let buffer = Buffer.alloc(2)
-
-				return await i2c.openPromisified(1)
-					.then(i2c1 => i2c1.readI2cBlock(addr, cmd, length, buffer)
-						.then((rawData) => {
-							i2c1.close()                                 
-							return Math.round((rawData.buffer.readIntLE(0, 2)/1000.0) * 1e2 ) / 1e2
-						})
-						.catch((error) => {return `Error occured! ${error.message}`})
-					)
-					.catch((error) => {return `Error occured! ${error.message}`})
-			}
-		},
-
-
-        // Write 0-10V output voltage value (V)
-        uoutwr: {
-    
-            params: {
-                stack  : { type: "number", integer: true, min: 0, max: 7},
-                channel: { type: "number", positive: true, integer: true, min: 1, max: 4},
-                value  : { type: "number", positive: true, min: 0, max: 10}
-            },
-
-            async handler(ctx) {
-
-                let addr = DEFAULT_HW_ADD + ctx.params.stack
-                let cmd = I2C_MEM_U0_10_OUT_VAL1 + (ctx.params.channel - 1)*2
-                let word = Math.round(ctx.params.value * 1000) // range 0 to 65535 in word but in the program range 0 to 1000 is equal 0 to 10V
-                
-                return await i2c.openPromisified(1)
-                    .then(i2c1 => i2c1.writeWord(addr, cmd, word)
-                        .then((rawData) => {
-                            i2c1.close()                                 
-                            return 'Success!'
-                        })
-                        .catch((error) => {return `Error occured! ${error.message}`})
-                    )
-                    .catch((error) => {return `Error occured! ${error.message}`})
-            }
-        },
-
-
-
-
-
-        // Write 4-20mA output value (mA)
-        // ioutwr: {
-    
-        //     params: {
-        //         stack  : { type: "number", integer: true, min: 0, max: 7},
-        //         channel: { type: "number", positive: true, integer: true, min: 1, max: 4},
-        //         value  : { type: "number", positive: true, min: 4, max: 20}
-        //     },
-
-        //     async handler(ctx) {
-
-        //         let addr = DEFAULT_HW_ADD + ctx.params.stack
-        //         let cmd = I2C_MEM_I4_20_OUT_VAL1 + (ctx.params.channel - 1)*2
-        //         let word = Math.round(ctx.params.value * 1000) // range 0 to 65535 in word but in the program range 0 to 1000 is equal 0 to 10V
-                
-        //         return await i2c.openPromisified(1)
-        //             .then(i2c1 => i2c1.writeWord(addr, cmd, word)
-        //                 .then((rawData) => {
-        //                     i2c1.close()                                 
-        //                     return 'Success!'
-        //                 })
-        //                 .catch((error) => {return `Error occured! ${error.message}`})
-        //             )
-        //             .catch((error) => {return `Error occured! ${error.message}`})
-        //     }
-        // },
     },
 });
 
 data.raspberrypi.nodeID = broker.nodeID,
 
 broker.start()
-// 	.then(() => {
-// 		return broker.call("daq.uinrd", { stack: 0, channel: 4 }).then(res => broker.logger.info("value: ", res));
-// 	})
-// 	.catch(err => {
-// 		broker.logger.error(`Error occurred! Action: '${err.ctx.action.name}', Message: ${err.code} - ${err.message}`);
-// 		if (err.data)
-// 			broker.logger.error("Error data:", err.data);
-// 	});
-// broker.repl()
-
-
-// call daq.uinrd --stack 0 --channel 4
-// call daq.iinrd --stack 0 --channel 4
-// call daq.readI2cBlock --stack 0
-// call daq.uoutrd --stack 0 --channel 4
-// call daq.board --stack 0
-// call daq.rtcrd --stack 0
-
-
-// call daq.uoutwr --stack 0 --channel 4 --value 4
-// call daq.ioutwr --stack 0 --channel 4 --value 4.4
 
     .then(() => {
         setInterval(() => {
-            // broker.call("daq.readI2cBlock", { stack: 0 })
-            broker.call("daq.rtcrd", { stack: 0 })
 
-            .then(()=> broker.call("daq.uinrd", {stack:0, channel: 4}))
+                       broker.call("daq.board", { stack: 0 })
+            .then(()=> broker.call("daq.rtcrd", {stack:0}))       
             
+            .then(()=> broker.call("daq.uoutwr", {stack:0, channel: 1, value: 1.11}))                       
+            .then(()=> broker.call("daq.uoutwr", {stack:0, channel: 2, value: 2.22}))                       
+            .then(()=> broker.call("daq.uoutwr", {stack:0, channel: 3, value: 3.33}))                       
+            .then(()=> broker.call("daq.uoutwr", {stack:0, channel: 4, value: 4.44}))      
+            
+            .then(()=> broker.call("daq.uoutrd", {stack:0, channel: 1}))                       
+            .then(()=> broker.call("daq.uoutrd", {stack:0, channel: 2}))                       
+            .then(()=> broker.call("daq.uoutrd", {stack:0, channel: 3}))                       
+            .then(()=> broker.call("daq.uoutrd", {stack:0, channel: 4}))  
+
+            .then(()=> broker.call("daq.uinrd", {stack:0, channel: 1}))
+            .then(()=> broker.call("daq.uinrd", {stack:0, channel: 2}))
+            .then(()=> broker.call("daq.uinrd", {stack:0, channel: 3}))
+            .then(()=> broker.call("daq.uinrd", {stack:0, channel: 4}))
+
+            .then(()=> broker.call("daq.ioutwr", {stack:0, channel: 1, value: 11.11}))
+            .then(()=> broker.call("daq.ioutwr", {stack:0, channel: 2, value: 12.22}))
+            .then(()=> broker.call("daq.ioutwr", {stack:0, channel: 3, value: 13.33}))
+            .then(()=> broker.call("daq.ioutwr", {stack:0, channel: 4, value: 14.44}))
+
+            .then(()=> broker.call("daq.ioutrd", {stack:0, channel: 1}))                       
+            .then(()=> broker.call("daq.ioutrd", {stack:0, channel: 2}))                       
+            .then(()=> broker.call("daq.ioutrd", {stack:0, channel: 3}))                       
+            .then(()=> broker.call("daq.ioutrd", {stack:0, channel: 4}))  
+
+            .then(()=> broker.call("daq.iinrd", {stack:0, channel: 1}))
+            .then(()=> broker.call("daq.iinrd", {stack:0, channel: 2}))
+            .then(()=> broker.call("daq.iinrd", {stack:0, channel: 3}))
+            .then(()=> broker.call("daq.iinrd", {stack:0, channel: 4}))
             
             .then(res => {
                 //broker.logger.info(res)
                 broker.logger.info(data)
             })
          	.catch(err => {
-                broker.logger.error(`Error occurred! Action: '${err.ctx.action.name}', Message: ${err.code} - ${err.message}`);
+                //broker.logger.error(`Error occurred! Action: '${err.ctx.action.name}', Message: ${err.code} - ${err.message}`);
                 if (err.data)
                     broker.logger.error("Error data:", err.data);
             })
@@ -444,13 +442,13 @@ broker.start()
         edgewr:         Writ opto inputs transitions type: 0 - disable, 1 - rising, 2 - falling, 3 - both
         uoutrd:         Read 0-10V Output voltage value(V) - ok
         uoutwr:         Write 0-10V output voltage value (V) - ok
-        ioutrd:         Read 4-20mA Output current value (mA) - Não bateu a corrente ver se estou testando certo
-        ioutwr:         Write 4-20mA output value (mA) - Não deu certo
+        ioutrd:         Read 4-20mA Output current value (mA) - ok
+        ioutwr:         Write 4-20mA output value (mA) - ok
         odrd:           Read open-drain Output PWM value(0..100%) 
         odwr:           Write open-drain output PWM value (0..100%)
         uinrd:          Read 0-10V input value (V) - ok
         pmuinrd:        Read +/-10V input value (V). Warning: This value is valid only if the corespondung jumper is connected
-        iinrd:          Read 4-20mA input value (mA) 
+        iinrd:          Read 4-20mA input value (mA) - ok
         uincal:         Calibrate one 0-10V input channel, the calibration must be done in 2 points at min 5V apart
         iincal:         Calibrate one 4-20mA input channel, the calibration must be done in 2 points at min 10mA apart
         uincalrst:      Reset the calibration for one 0-10V input channel
@@ -474,7 +472,7 @@ broker.start()
                         This is the time that watchdog mantain Raspberry turned off 
         rs485rd:        Read the RS485 communication settings
         rs485wr:        Write the RS485 communication settings
-        rtcrd:          Get the internal RTC  date and time(mm/dd/yy hh:mm:ss)
+        rtcrd:          Get the internal RTC  date and time(mm/dd/yy hh:mm:ss) - ok
         rtcwr:          Set the internal RTC  date and time(mm/dd/yy hh:mm:ss)
 
 
