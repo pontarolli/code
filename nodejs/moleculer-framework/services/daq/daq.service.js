@@ -4,6 +4,7 @@ const { ServiceBroker } = require("moleculer")
 const i2c               = require('i2c-bus')
 
 const DEFAULT_HW_ADD = 0x50
+const CALIBRATION_KEY = 0xaa
 
 // Diagnose functions
 const I2C_MEM_DIAG_TEMPERATURE = 114
@@ -31,6 +32,7 @@ const I2C_RTC_DAY_ADD        = 72
 const I2C_RTC_HOUR_ADD       = 73
 const I2C_RTC_MINUTE_ADD     = 74
 const I2C_RTC_SECOND_ADD     = 75
+
 const I2C_RTC_SET_YEAR_ADD   = 76
 const I2C_RTC_SET_MONTH_ADD  = 77
 const I2C_RTC_SET_DAY_ADD    = 78
@@ -51,16 +53,14 @@ let data = {
             power      : undefined,
         },
         rtc_utc    : undefined,
-        rtc_local  : undefined,
-        
+        rtc_local  : undefined,        
         uoutrd: {
             description: 'Read 0-10V Output voltage value(V)',
             channel_1  : undefined,
             channel_2  : undefined,
             channel_3  : undefined,
             channel_4  : undefined,
-        },
-        
+        },        
         uinrd: {
             description: 'Read 0-10V input value (V)',
             channel_1  : undefined,
@@ -68,7 +68,6 @@ let data = {
             channel_3  : undefined,
             channel_4  : undefined,
         },
-
         ioutrd: {
             description: 'Read 4-20mA Output current value (mA)',
             channel_1  : undefined,
@@ -76,7 +75,6 @@ let data = {
             channel_3  : undefined,
             channel_4  : undefined,
         },
-
         iinrd: {
             description: 'Read 4-20mA input value (mA)',
             channel_1  : undefined,
@@ -331,14 +329,15 @@ broker.createService({
                 let cmd = I2C_RTC_YEAR_ADD
                 let length = 6
                 let buffer = Buffer.alloc(6)
+
                 return await i2c.openPromisified(1)
                     .then(i2c1 => i2c1.readI2cBlock(addr, cmd, length, buffer)
                         .then((rawData) => {
                             i2c1.close()   
 
                             let year   = 2000 + (rawData.buffer.readIntLE(0, 1))
-                            let month  = (rawData.buffer.readIntLE(1, 1)) - 1 //Um valor inteiro que representa o mês, começando com 0 para Janeiro até 11 para Dezembro.
-                            let day    = rawData.buffer.readIntLE(2, 1)
+                            let month  = (rawData.buffer.readIntLE(1, 1))  //Um valor inteiro que representa o mês, começando com 0 para Janeiro até 11 para Dezembro.
+                            let day    = rawData.buffer.readIntLE(2, 1) // 
                             let hour   = rawData.buffer.readIntLE(3, 1)
                             let minute = rawData.buffer.readIntLE(4, 1)
                             let second = rawData.buffer.readIntLE(5, 1)
@@ -358,13 +357,47 @@ broker.createService({
                             }
 
                             const locale    = 'pt-br'
-                            data.megaind.rtc_local = data.megaind.rtc_utc.toLocaleDateString(locale, option)
+                            return data.megaind.rtc_local = data.megaind.rtc_utc.toLocaleDateString(locale, option)
                         })
                         .catch((error) => {return `Error occured! ${error.message}`})
                     )
                     .catch((error) => {return `Error occured! ${error.message}`})
             }
         },
+
+        // Set the internal RTC  date and time(mm/dd/yy hh:mm:ss)
+        // megaind <id> rtcwr <mm> <dd> <yy> <hh> <mm> <ss> 
+        // Example:	megaind 0 rtcwr 9 15 20 21 43 15; Set the internal RTC time and date on Board #0 at Sept/15/2020  21:43:15\n"};
+
+        rtcwr: {
+            params: {
+                stack : { type: "number", integer: true, min: 0, max: 7},
+                month : { type: "number", integer: true, min: 1, max: 12},
+                date  : { type: "number", integer: true, min: 1, max: 31},
+                year  : { type: "number", integer: true, min: 0, max: 99},
+                hour  : { type: "number", integer: true, min: 0, max: 23},
+                minute: { type: "number", integer: true, min: 0, max: 59},
+                second: { type: "number", integer: true, min: 0, max: 59},
+            },
+
+            async handler(ctx){
+                let addr = DEFAULT_HW_ADD + ctx.params.stack
+                let cmd = I2C_RTC_SET_YEAR_ADD
+                let length = 7
+                let buffer = Buffer.from([ ctx.params.year, ctx.params.month, ctx.params.date, ctx.params.hour, ctx.params.minute, ctx.params.second, CALIBRATION_KEY]);
+
+                return await i2c.openPromisified(1)
+                    .then(i2c1 => i2c1.writeI2cBlock(addr, cmd, length, buffer)
+                        .then((rawData) => {
+                            i2c1.close()                                 
+                            return 'Success!'
+                        })
+                        .catch((error) => {return `Error occured! ${error.message}`})
+                    )
+                    .catch((error) => {return `Error occured! ${error.message}`})
+
+            }
+        }
     },
 });
 
@@ -372,12 +405,29 @@ data.raspberrypi.nodeID = broker.nodeID,
 
 broker.start()
 
+// broker.repl()
+
     .then(() => {
         setInterval(() => {
 
                        broker.call("daq.board", { stack: 0 })
-            .then(()=> broker.call("daq.rtcrd", {stack:0}))       
-            
+
+            .then(()=> {
+
+                let date2 = new Date()
+
+                broker.call("daq.rtcwr", {
+                    stack : 0,
+                    year  : date2.getUTCFullYear() - 2000,   //year from 0-99
+                    month : date2.getUTCMonth(),             //months from 0-11 utc
+                    date  : date2.getUTCDate(),
+                    hour  : date2.getUTCHours(),
+                    minute: date2.getUTCMinutes(),
+                    second: date2.getUTCSeconds()
+                })  
+
+            }) 
+            .then(()=> broker.call("daq.rtcrd", {stack:0}))           
             .then(()=> broker.call("daq.uoutwr", {stack:0, channel: 1, value: 1.11}))                       
             .then(()=> broker.call("daq.uoutwr", {stack:0, channel: 2, value: 2.22}))                       
             .then(()=> broker.call("daq.uoutwr", {stack:0, channel: 3, value: 3.33}))                       
@@ -473,7 +523,7 @@ broker.start()
         rs485rd:        Read the RS485 communication settings
         rs485wr:        Write the RS485 communication settings
         rtcrd:          Get the internal RTC  date and time(mm/dd/yy hh:mm:ss) - ok
-        rtcwr:          Set the internal RTC  date and time(mm/dd/yy hh:mm:ss)
+        rtcwr:          Set the internal RTC  date and time(mm/dd/yy hh:mm:ss) - ok
 
 
                 Usage:          megaind -v
