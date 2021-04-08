@@ -1,0 +1,10 @@
+#!/bin/bash
+# This is a comment
+pwd
+whoami
+
+# Let’s make the file executable:
+# chmod +x ./myscript
+
+# Now let’s try to execute it:
+# ./myscript

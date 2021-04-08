@@ -1,3 +1,6 @@
+// testar a função de erro com a placa que esta com o professor, erro de i2c, tentar fazer a leitura sem a megaind conectada
+
+
 "use strict";
 
 const { ServiceBroker } = require("moleculer")
@@ -82,6 +85,13 @@ let data = {
             channel_3  : undefined,
             channel_4  : undefined,
         },
+        odrd: {
+            description: 'Read open-drain Output PWM value(0..100%)',
+            channel_1  : undefined,
+            channel_2  : undefined,
+            channel_3  : undefined,
+            channel_4  : undefined,
+        }
     },
 }
 
@@ -115,206 +125,263 @@ broker.createService({
 
     actions: {
 
-        // Display the board status and firmware version number
-        // Firmware ver 01.04, CPU temperature 38 C, Power source 23.77 V, Raspberry 5.22 V
-        // call daq.board --stack 0
-        board: {
-            params: {
-				stack  : { type: "number", integer: true, min: 0, max: 7},
-			},
-
-			async handler(ctx) {
-
-                let addr = DEFAULT_HW_ADD + ctx.params.stack
-                let cmd = I2C_MEM_DIAG_TEMPERATURE
-                let length = 8
-                let buffer = Buffer.alloc(8)
-
-				return await i2c.openPromisified(1)
-					.then(i2c1 => i2c1.readI2cBlock(addr, cmd, length, buffer)
-						.then((rawData) => {
-							i2c1.close()                                
-                            data.megaind.board.temperature = rawData.buffer.readIntLE(0, 1)
-                            data.megaind.board.power = Math.round((rawData.buffer.readIntLE(1, 2)/1000.0) * 1e2 ) / 1e2
-                            data.raspberrypi.power = Math.round((rawData.buffer.readIntLE(3, 3)/1000.0) * 1e2 ) / 1e2
-                            let major = rawData.buffer.readIntLE(6, 1)
-                            let minor = rawData.buffer.readIntLE(7, 1)
-                            data.megaind.board.firmware = major + minor / 100.0
-                            broker.logger.info(data)
-						})
-						.catch((error) => {return `Error occured! ${error.message}`})
-					)
-					.catch((error) => {return `Error occured! ${error.message}`})
-			}
-        },
-
-        // Read 0-10V Output voltage value(V)
-        uoutrd: {
-            
-			params: {
-				stack  : { type: "number", integer: true, min: 0, max: 7},
-				channel: { type: "number", positive: true, integer: true, min: 1, max: 4}
-			},
-
-			async handler(ctx) {
-
-                let addr = DEFAULT_HW_ADD + ctx.params.stack
-                let cmd = I2C_MEM_U0_10_OUT_VAL1 + (ctx.params.channel - 1)*2
-                let length = 2
-                let buffer = Buffer.alloc(2)
-
-				return await i2c.openPromisified(1)
-					.then(i2c1 => i2c1.readI2cBlock(addr, cmd, length, buffer)
-						.then((rawData) => {
-							i2c1.close()    
-                            return data.megaind.uoutrd[`channel_${ctx.params.channel}`] = Math.round((rawData.buffer.readIntLE(0, 2)/1000.0) * 1e2 ) / 1e2                              
-						})
-						.catch((error) => {return `Error occured! ${error.message}`})
-					)
-					.catch((error) => {return `Error occured! ${error.message}`})
-			}
-		},
-
-		// Read 0-10V input value (V)
-        uinrd: {
-            
-			params: {
-				stack  : { type: "number", integer: true, min: 0, max: 7},
-				channel: { type: "number", positive: true, integer: true, min: 1, max: 4}
-			},
-
-			async handler(ctx) {
-
-                let addr   = DEFAULT_HW_ADD + ctx.params.stack
-                let cmd    = I2C_MEM_U0_10_IN_VAL1 + (ctx.params.channel - 1) * 2
-                let length = 2
-                let buffer = Buffer.alloc(2)
-
-				return await i2c.openPromisified(1)
-					.then(i2c1 => i2c1.readI2cBlock(addr, cmd, length, buffer)
-						.then((rawData) => {
-							i2c1.close()       
-                            return data.megaind.uinrd[`channel_${ctx.params.channel}`] = Math.round((rawData.buffer.readIntLE(0, 2)/1000.0) * 1e2 ) / 1e2 
-						})
-						.catch((error) => {return `Error occured! ${error.message}`})
-					)
-					.catch((error) => {return `Error occured! ${error.message}`})
-			}
-		},
-
-        // Read 4-20mA input value (mA) 
-        iinrd: {
-    
-            params: {
-                stack  : { type: "number", integer: true, min: 0, max: 7},
-                channel: { type: "number", positive: true, integer: true, min: 1, max: 4}
-            },
-
-            async handler(ctx) {
-
-                let addr = DEFAULT_HW_ADD + ctx.params.stack
-                let cmd = I2C_MEM_I4_20_IN_VAL1 + (ctx.params.channel - 1)*2
-                let length = 2
-                let buffer = Buffer.alloc(2)
-
-                return await i2c.openPromisified(1)
-                    .then(i2c1 => i2c1.readI2cBlock(addr, cmd, length, buffer)
-                        .then((rawData) => {
-                            i2c1.close()  
-                            return data.megaind.iinrd[`channel_${ctx.params.channel}`] = Math.round((rawData.buffer.readIntLE(0, 2)/1000.0) * 1e2 ) / 1e2 
-                        })
-                        .catch((error) => {return `Error occured! ${error.message}`})
-                    )
-                    .catch((error) => {return `Error occured! ${error.message}`})
-            }
-        },
-
-        // Read All data
-        data: {
-            handler(){
-                return data 
-            }            
-        },
-
-        // Write 0-10V output voltage value (V)
+        // uoutwr : Write 0-10V output voltage value (V)
+        // Usage  : daq.uoutwr --stack <id> --channel <channel> --value <value>
+        // Example: mol $ call daq.uoutwr --stack 0 --channel 2 --value 2.5; Write 2.5V to 0-10V output channel 2 on Board 0
         uoutwr: {
     
             params: {
                 stack  : { type: "number", integer: true, min: 0, max: 7},
-                channel: { type: "number", positive: true, integer: true, min: 1, max: 4},
-                value  : { type: "number", positive: true, min: 0, max: 10}
+                channel: { type: "number", integer: true, min: 1, max: 4},
+                value  : { type: "number", min: 0, max: 10}
             },
 
             async handler(ctx) {
 
                 let addr = DEFAULT_HW_ADD + ctx.params.stack
                 let cmd  = I2C_MEM_U0_10_OUT_VAL1 + (ctx.params.channel - 1)*2
-                let word = Math.round(ctx.params.value * 1000)                  // range 0 to 65535 in word but in the program range 0 to 1000 is equal 0 to 10V
+                let word = ctx.params.value * 1000                  // range 0 to 65535 in word but in the program range 0 to 1000 is equal 0 to 10V
                 
                 return await i2c.openPromisified(1)
                     .then(i2c1 => i2c1.writeWord(addr, cmd, word)
                         .then((rawData) => {
                             i2c1.close()                                 
-                            return 'Success!'
+                            return 'done'
                         })
-                        .catch((error) => {return `Error occured! ${error.message}`})
                     )
                     .catch((error) => {return `Error occured! ${error.message}`})
             }
         },
+        
+        // uoutrd : Read 0-10V Output voltage value(V)
+        // Usage  : daq.uoutrd --stack <id> --channel <channel> 
+        // Example: mol $ call daq.uoutrd --stack 0 --channel 2; Read the voltage on 0-10V out channel 2 on Board 0
+        uoutrd: {
+            
+			params: {
+				stack  : { type: "number", integer: true, min: 0, max: 7},
+				channel: { type: "number", integer: true, min: 1, max: 4}
+			},
 
-        // Write 4-20mA output value (mA)
+			async handler(ctx) {
+
+                let addr = DEFAULT_HW_ADD + ctx.params.stack
+                let cmd = I2C_MEM_U0_10_OUT_VAL1 + (ctx.params.channel - 1)*2
+
+				return await i2c.openPromisified(1)
+					.then(i2c1 => i2c1.readWord(addr, cmd)
+						.then((rawData) => {
+							i2c1.close()    
+                            return data.megaind.uoutrd[`channel_${ctx.params.channel}`] = rawData/1000                              
+						})
+					)
+					.catch((error) => {return `Error occured! ${error.message}`})
+			}
+		},
+
+        // uinrd : Read 0-10V input value (V)
+        // Usage  : daq.uinrd --stack <id> --channel <channel> 
+        // Example: mol $ call daq.uinrd --stack 0 --channel 2; Read the voltage input on 0-10V in channel 2 on Board 0
+        uinrd: {
+            
+			params: {
+				stack  : { type: "number", integer: true, min: 0, max: 7},
+				channel: { type: "number", integer: true, min: 1, max: 4}
+			},
+
+			async handler(ctx) {
+
+                let addr   = DEFAULT_HW_ADD + ctx.params.stack
+                let cmd    = I2C_MEM_U0_10_IN_VAL1 + (ctx.params.channel - 1) * 2
+
+				return await i2c.openPromisified(1)
+					.then(i2c1 => i2c1.readWord(addr, cmd)
+						.then((rawData) => {
+							i2c1.close()       
+                            return data.megaind.uinrd[`channel_${ctx.params.channel}`] = rawData/1000
+						})
+					)
+					.catch((error) => {return `Error occured! ${error.message}`})
+			}
+		},
+
+        
+        
+        
+        
+        // ioutwr : Write 4-20mA output value (mA)
+        // Usage  : daq.ioutwr --stack <id> --channel <channel> --value <value>
+        // Example: mol $ call daq.ioutwr --stack 0 --channel 2 --value 10.5; Set 10.5mA to 4-20mA output channel 2 on Board 0
         ioutwr: {
     
             params: {
                 stack  : { type: "number", integer: true, min: 0, max: 7},
-                channel: { type: "number", positive: true, integer: true, min: 1, max: 4},
-                value  : { type: "number", positive: true, min: 4, max: 20}
+                channel: { type: "number", integer: true, min: 1, max: 4},
+                value  : { type: "number", min: 4, max: 20}
             },
 
             async handler(ctx) {
 
                 let addr = DEFAULT_HW_ADD + ctx.params.stack
                 let cmd = I2C_MEM_I4_20_OUT_VAL1 + (ctx.params.channel - 1)*2
-                let word = Math.round(ctx.params.value * 1000) // range 0 to 65535 in word but in the program range 0 to 1000 is equal 0 to 10V
+                let word = ctx.params.value * 1000 
                 
                 return await i2c.openPromisified(1)
                     .then(i2c1 => i2c1.writeWord(addr, cmd, word)
                         .then((rawData) => {
-                            i2c1.close()                                 
-                            return 'Success!'
+                            i2c1.close()                                
+                            return 'done'
                         })
-                        .catch((error) => {return `Error occured! ${error.message}`})
+                    )
+                    .catch((error) => {return `Error occured! ${error.message}`})
+            }
+        },
+ 
+        // ioutrd : Read 4-20mA Output current value (mA)
+        // Usage  : daq.ioutrd --stack <id> --channel <channel> 
+        // Example: mol $ call daq.ioutrd --stack 0 --channel 2; Read the current on 4-20mA out channel 2 on Board 0
+        ioutrd: {
+    
+            params: {
+                stack  : { type: "number", integer: true, min: 0, max: 7},
+                channel: { type: "number", integer: true, min: 1, max: 4}
+            },
+
+            async handler(ctx) {
+
+                let addr = DEFAULT_HW_ADD + ctx.params.stack
+                let cmd = I2C_MEM_I4_20_OUT_VAL1 + (ctx.params.channel - 1)*2
+
+                return await i2c.openPromisified(1)
+                    .then(i2c1 => i2c1.readWord(addr, cmd)
+                        .then((rawData) => {
+                            i2c1.close()    
+                            return data.megaind.ioutrd[`channel_${ctx.params.channel}`] = rawData/1000                              
+                        })
                     )
                     .catch((error) => {return `Error occured! ${error.message}`})
             }
         },
 
-        // Read 4-20mA Output current value (mA)
-        ioutrd: {
+        // iinrd : Read 4-20mA input value (mA) 
+        // Usage  : daq.iinrd --stack <id> --channel <channel> 
+        // Example: mol $ call daq.iinrd --stack 0 --channel 2; Read the voltage input on 4-20mA in channel 2 on Board 0
+        iinrd: {
     
             params: {
                 stack  : { type: "number", integer: true, min: 0, max: 7},
-                channel: { type: "number", positive: true, integer: true, min: 1, max: 4}
+                channel: { type: "number", integer: true, min: 1, max: 4}
             },
 
             async handler(ctx) {
 
                 let addr = DEFAULT_HW_ADD + ctx.params.stack
-                let cmd = I2C_MEM_I4_20_OUT_VAL1 + (ctx.params.channel - 1)*2
-                let length = 2
-                let buffer = Buffer.alloc(2)
+                let cmd = I2C_MEM_I4_20_IN_VAL1 + (ctx.params.channel - 1)*2
 
                 return await i2c.openPromisified(1)
-                    .then(i2c1 => i2c1.readI2cBlock(addr, cmd, length, buffer)
+                    .then(i2c1 => i2c1.readWord(addr, cmd)
                         .then((rawData) => {
-                            i2c1.close()    
-                            return data.megaind.ioutrd[`channel_${ctx.params.channel}`] = Math.round((rawData.buffer.readIntLE(0, 2)/1000.0) * 1e2 ) / 1e2                              
+                            i2c1.close()  
+                            return data.megaind.iinrd[`channel_${ctx.params.channel}`] = rawData/1000 
                         })
-                        .catch((error) => {return `Error occured! ${error.message}`})
                     )
                     .catch((error) => {return `Error occured! ${error.message}`})
             }
+        },
+
+
+
+
+
+        // odwr   : Write open-drain output PWM value (0..100%)
+        // Usage  : daq.odwr --stack <id> --channel <channel> --value <value>
+        // Example: mol $ call daq.odwr --stack 0 --channel 2 --value 10.5; Set PWM 10.5% to open-drain output channel 2 on Board 0
+        odwr: {
+            params: {
+                stack  : { type: "number", integer: true, min: 0, max: 7},
+                channel: { type: "number", integer: true, min: 1, max: 4},
+                value  : { type: "number", min: 0, max: 100}
+            },
+            
+            async handler(ctx) {
+
+                 let addr = DEFAULT_HW_ADD + ctx.params.stack
+                 let cmd = I2C_MEM_OD_PWM1 + (ctx.params.channel - 1)*2
+                 let word = ctx.params.value * 100
+                
+                return await i2c.openPromisified(1)
+                    .then(i2c1 => i2c1.writeWord(addr, cmd, word)
+                        .then((rawData) => {
+                            i2c1.close()                                 
+                            return 'done'
+                        })
+                    )
+                    .catch((error) => {return `Error occured! ${error.message}`})
+            }
+        },
+
+        // odrd   : Read open-drain Output PWM value(0..100%)
+        // Usage  : daq.odrd --stack <id> --channel <channel>
+        // Example: mol $ call daq.odrd --stack 0 --channel 2; Read the PWM value on open-drain output channel 2 on Board 0
+        odrd: {
+            params: {
+                stack  : { type: "number", integer: true, min: 0, max: 7},
+                channel: { type: "number", integer: true, min: 1, max: 4}
+            },
+
+            async handler(ctx) {
+
+                 let addr = DEFAULT_HW_ADD + ctx.params.stack
+                 let cmd = I2C_MEM_OD_PWM1 + (ctx.params.channel - 1)*2
+
+                return await i2c.openPromisified(1)
+                    .then(i2c1 => i2c1.readWord(addr, cmd)
+                        .then((rawData) => {
+                            i2c1.close()    
+                            return data.megaind.odrd[`channel_${ctx.params.channel}`] = rawData/100  
+                        })
+                    )
+                    .catch((error) => {return `Error occured! ${error.message}`})
+            }
+        },        
+
+
+
+
+
+
+        // optord: Read dry opto status,
+        // Usage  : daq.optord --stack <id> --channel <channel>
+        // Example: mol $ call daq.optord --stack 0 --channel 2; Read Status of opto input pin 2 on Board 0
+        optord: {
+            params: {
+                stack  : { type: "number", integer: true, min: 0, max: 7},
+                //channel: { type: "number", integer: true, min: 1, max: 4}
+            },
+
+            async handler(ctx) {
+
+                 let addr = DEFAULT_HW_ADD + ctx.params.stack
+                 let cmd = I2C_MEM_OPTO_IN_VAL + (ctx.params.channel - 1)
+
+                return await i2c.openPromisified(1)
+                    .then(i2c1 => i2c1.readByte(addr, cmd)
+                        .then((rawData) => {
+                            broker.logger.info(rawData)
+                            i2c1.close()    
+                            return data.megaind.odrd[`channel_${ctx.params.channel}`] = rawData/10000  
+                            // tenho que verificar se o valor for maior do que 1 é 1 se for menor 0 ver com calma amanha
+                        })
+                    )
+                    .catch((error) => {return `Error occured! ${error.message}`})
+            }
+        },    
+
+        // Read All data
+        data: {
+            handler(){
+                return data 
+            }            
         },
 
         // Get the internal RTC  date and time(yy/mm/dd hh:mm:ss) ISO 8601
@@ -368,7 +435,6 @@ broker.createService({
         // Set the internal RTC  date and time(mm/dd/yy hh:mm:ss)
         // megaind <id> rtcwr <mm> <dd> <yy> <hh> <mm> <ss> 
         // Example:	megaind 0 rtcwr 9 15 20 21 43 15; Set the internal RTC time and date on Board #0 at Sept/15/2020  21:43:15\n"};
-
         rtcwr: {
             params: {
                 stack : { type: "number", integer: true, min: 0, max: 7},
@@ -397,78 +463,128 @@ broker.createService({
                     .catch((error) => {return `Error occured! ${error.message}`})
 
             }
-        }
+        },
+
+
+
+                // Display the board status and firmware version number
+        // Firmware ver 01.04, CPU temperature 38 C, Power source 23.77 V, Raspberry 5.22 V
+        // call daq.board --stack 0
+        board: {
+            params: {
+				stack  : { type: "number", integer: true, min: 0, max: 7},
+			},
+
+			async handler(ctx) {
+
+                let addr = DEFAULT_HW_ADD + ctx.params.stack
+                let cmd = I2C_MEM_DIAG_TEMPERATURE
+                let length = 8
+                let buffer = Buffer.alloc(8)
+
+				return await i2c.openPromisified(1)
+					.then(i2c1 => i2c1.readI2cBlock(addr, cmd, length, buffer)
+						.then((rawData) => {
+							i2c1.close()                                
+                            data.megaind.board.temperature = rawData.buffer.readIntLE(0, 1)
+                            data.megaind.board.power = Math.round((rawData.buffer.readIntLE(1, 2)/1000.0) * 1e2 ) / 1e2
+                            data.raspberrypi.power = Math.round((rawData.buffer.readIntLE(3, 3)/1000.0) * 1e2 ) / 1e2
+                            let major = rawData.buffer.readIntLE(6, 1)
+                            let minor = rawData.buffer.readIntLE(7, 1)
+                            data.megaind.board.firmware = major + minor / 100.0
+                            broker.logger.info(data)
+						})
+						.catch((error) => {return `Error occured! ${error.message}`})
+					)
+					.catch((error) => {return `Error occured! ${error.message}`})
+			}
+        },
+
+        say: {
+            handler(ctx){
+                return this.sayHello(ctx.params.name)
+            }
+        },
+
+
     },
+
+    methods: {
+        sayHello(name){
+            return `hello ${name}`
+        },    
+    }
 });
 
 data.raspberrypi.nodeID = broker.nodeID,
 
 broker.start()
 
-// broker.repl()
+broker.repl()
 
-    .then(() => {
-        setInterval(() => {
+    // .then(() => {
+    //     setInterval(() => {
 
-                       broker.call("daq.board", { stack: 0 })
+    //                    broker.call("daq.board", { stack: 0 })
 
-            .then(()=> {
+    //         .then(()=> {
 
-                let date2 = new Date()
+    //             let date = new Date()
 
-                broker.call("daq.rtcwr", {
-                    stack : 0,
-                    year  : date2.getUTCFullYear() - 2000,   //year from 0-99
-                    month : date2.getUTCMonth(),             //months from 0-11 utc
-                    date  : date2.getUTCDate(),
-                    hour  : date2.getUTCHours(),
-                    minute: date2.getUTCMinutes(),
-                    second: date2.getUTCSeconds()
-                })  
+    //             broker.call("daq.rtcwr", {
+    //                 stack : 0,
+    //                 year  : date.getUTCFullYear() - 2000,   //year from 0-99
+    //                 month : date.getUTCMonth(),             //months from 0-11 utc
+    //                 date  : date.getUTCDate(),
+    //                 hour  : date.getUTCHours(),
+    //                 minute: date.getUTCMinutes(),
+    //                 second: date.getUTCSeconds()
+    //             })  
 
-            }) 
-            .then(()=> broker.call("daq.rtcrd", {stack:0}))           
-            .then(()=> broker.call("daq.uoutwr", {stack:0, channel: 1, value: 1.11}))                       
-            .then(()=> broker.call("daq.uoutwr", {stack:0, channel: 2, value: 2.22}))                       
-            .then(()=> broker.call("daq.uoutwr", {stack:0, channel: 3, value: 3.33}))                       
-            .then(()=> broker.call("daq.uoutwr", {stack:0, channel: 4, value: 4.44}))      
+    //         }) 
+    //         .then(()=> broker.call("daq.rtcrd",  {stack:0}))           
             
-            .then(()=> broker.call("daq.uoutrd", {stack:0, channel: 1}))                       
-            .then(()=> broker.call("daq.uoutrd", {stack:0, channel: 2}))                       
-            .then(()=> broker.call("daq.uoutrd", {stack:0, channel: 3}))                       
-            .then(()=> broker.call("daq.uoutrd", {stack:0, channel: 4}))  
-
-            .then(()=> broker.call("daq.uinrd", {stack:0, channel: 1}))
-            .then(()=> broker.call("daq.uinrd", {stack:0, channel: 2}))
-            .then(()=> broker.call("daq.uinrd", {stack:0, channel: 3}))
-            .then(()=> broker.call("daq.uinrd", {stack:0, channel: 4}))
-
-            .then(()=> broker.call("daq.ioutwr", {stack:0, channel: 1, value: 11.11}))
-            .then(()=> broker.call("daq.ioutwr", {stack:0, channel: 2, value: 12.22}))
-            .then(()=> broker.call("daq.ioutwr", {stack:0, channel: 3, value: 13.33}))
-            .then(()=> broker.call("daq.ioutwr", {stack:0, channel: 4, value: 14.44}))
-
-            .then(()=> broker.call("daq.ioutrd", {stack:0, channel: 1}))                       
-            .then(()=> broker.call("daq.ioutrd", {stack:0, channel: 2}))                       
-            .then(()=> broker.call("daq.ioutrd", {stack:0, channel: 3}))                       
-            .then(()=> broker.call("daq.ioutrd", {stack:0, channel: 4}))  
-
-            .then(()=> broker.call("daq.iinrd", {stack:0, channel: 1}))
-            .then(()=> broker.call("daq.iinrd", {stack:0, channel: 2}))
-            .then(()=> broker.call("daq.iinrd", {stack:0, channel: 3}))
-            .then(()=> broker.call("daq.iinrd", {stack:0, channel: 4}))
+    //         .then(()=> broker.call("daq.uoutwr", {stack:0, channel: 1, value: 1.11}))                       
+    //         .then(()=> broker.call("daq.uoutwr", {stack:0, channel: 2, value: 2.22}))                       
+    //         .then(()=> broker.call("daq.uoutwr", {stack:0, channel: 3, value: 3.33}))                       
+    //         .then(()=> broker.call("daq.uoutwr", {stack:0, channel: 4, value: 4.44}))      
             
-            .then(res => {
-                //broker.logger.info(res)
-                broker.logger.info(data)
-            })
-         	.catch(err => {
-                //broker.logger.error(`Error occurred! Action: '${err.ctx.action.name}', Message: ${err.code} - ${err.message}`);
-                if (err.data)
-                    broker.logger.error("Error data:", err.data);
-            })
-        }, 1000);
-    });
+    //         .then(()=> broker.call("daq.uoutrd", {stack:0, channel: 1}))                       
+    //         .then(()=> broker.call("daq.uoutrd", {stack:0, channel: 2}))                       
+    //         .then(()=> broker.call("daq.uoutrd", {stack:0, channel: 3}))                       
+    //         .then(()=> broker.call("daq.uoutrd", {stack:0, channel: 4}))  
+
+    //         .then(()=> broker.call("daq.uinrd", {stack:0, channel: 1}))
+    //         .then(()=> broker.call("daq.uinrd", {stack:0, channel: 2}))
+    //         .then(()=> broker.call("daq.uinrd", {stack:0, channel: 3}))
+    //         .then(()=> broker.call("daq.uinrd", {stack:0, channel: 4}))
+
+    //         .then(()=> broker.call("daq.ioutwr", {stack:0, channel: 1, value: 11.11}))
+    //         .then(()=> broker.call("daq.ioutwr", {stack:0, channel: 2, value: 12.22}))
+    //         .then(()=> broker.call("daq.ioutwr", {stack:0, channel: 3, value: 13.33}))
+    //         .then(()=> broker.call("daq.ioutwr", {stack:0, channel: 4, value: 14.44}))
+
+    //         .then(()=> broker.call("daq.ioutrd", {stack:0, channel: 1}))                       
+    //         .then(()=> broker.call("daq.ioutrd", {stack:0, channel: 2}))                       
+    //         .then(()=> broker.call("daq.ioutrd", {stack:0, channel: 3}))                       
+    //         .then(()=> broker.call("daq.ioutrd", {stack:0, channel: 4}))  
+
+    //         .then(()=> broker.call("daq.iinrd", {stack:0, channel: 1}))
+    //         .then(()=> broker.call("daq.iinrd", {stack:0, channel: 2}))
+    //         .then(()=> broker.call("daq.iinrd", {stack:0, channel: 3}))
+    //         .then(()=> broker.call("daq.iinrd", {stack:0, channel: 4}))
+            
+    //         .then(res => {
+    //             //broker.logger.info(res)
+    //             broker.logger.info(data)
+    //         })
+    //      	.catch(err => {
+    //             //broker.logger.error(`Error occurred! Action: '${err.ctx.action.name}', Message: ${err.code} - ${err.message}`);
+    //             if (err.data)
+    //                 broker.logger.error("Error data:", err.data);
+    //         })
+    //     }, 1000);
+    // });
 
 
 
@@ -567,4 +683,17 @@ broker.start()
         Usage:          megaind <id> rtcrd 
         Usage:          megaind <id> rtcwr <mm> <dd> <yy> <hh> <mm> <ss> 
 Where: <id> = Board level id = 0..7
- */
+ 
+4relind: Usage:  4relind -h <command>
+         4relind -v
+         4relind -warranty
+         4relind -list
+         4relind <id> write <channel> <on/off>
+         4relind <id> write <value>
+         4relind <id> read <channel>
+         4relind <id> read
+         4relind <id> inread <channel>
+         4relind <id> inread
+         4relind <id> test
+
+*/
