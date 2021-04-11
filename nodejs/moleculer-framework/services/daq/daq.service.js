@@ -6,7 +6,25 @@
 const { ServiceBroker } = require("moleculer")
 const i2c               = require('i2c-bus')
 
+const RELAY4_HW_I2C_BASE_ADD = 0x38
+
+// const RELAY4_HW_I2C_BASE_ADD = 0x3f
+// ok const RELAY4_HW_I2C_BASE_ADD = 0x30
+
+
+
+const RELAY4_INPORT_REG_ADD  = 0x00
+const RELAY4_OUTPORT_REG_ADD = 0x01
+const RELAY4_POLINV_REG_ADD  = 0x02
+const RELAY4_CFG_REG_ADD     = 0x03
+
+const ERROR = -1
+const OK    = 0
+const FAIL  = -1
+
 const DEFAULT_HW_ADD = 0x50
+
+
 const CALIBRATION_KEY = 0xaa
 
 // Diagnose functions
@@ -91,7 +109,15 @@ let data = {
             channel_2  : undefined,
             channel_3  : undefined,
             channel_4  : undefined,
-        }
+        },
+        optord: {
+            description: 'Read dry opto status',
+            channel_0  : undefined,
+            channel_1  : undefined,
+            channel_2  : undefined,
+            channel_3  : undefined,
+            channel_4  : undefined,
+        },
     },
 }
 
@@ -124,6 +150,142 @@ broker.createService({
     name: "daq",
 
     actions: {
+       
+       
+       
+       
+       
+        // *Boards
+
+        // board: Display the board status and firmware version number.
+        // Usage: daq.board --stack <id>
+        // Example: mol $ call daq.board --stack 0; Display vcc, temperature, firmware version
+        // Firmware ver 01.04, CPU temperature 38 C, Power source 23.77 V, Raspberry 5.22 V
+        board: {
+            params: {
+				stack  : { type: "number", integer: true, min: 0, max: 7},
+			},
+
+			async handler(ctx) {
+
+                let addr = DEFAULT_HW_ADD + ctx.params.stack
+                let cmd = I2C_MEM_DIAG_TEMPERATURE
+                let length = 8
+                let buffer = Buffer.alloc(8)
+
+				return await i2c.openPromisified(1)
+					.then(i2c1 => i2c1.readI2cBlock(addr, cmd, length, buffer)
+						.then((rawData) => {
+							i2c1.close()                                
+                            data.megaind.board.temperature = rawData.buffer.readIntLE(0, 1)
+                            data.megaind.board.power = Math.round((rawData.buffer.readIntLE(1, 2)/1000.0) * 1e2 ) / 1e2
+                            data.raspberrypi.power = Math.round((rawData.buffer.readIntLE(3, 3)/1000.0) * 1e2 ) / 1e2
+                            let major = rawData.buffer.readIntLE(6, 1)
+                            let minor = rawData.buffer.readIntLE(7, 1)
+                            data.megaind.board.firmware = major + minor / 100.0
+                            broker.logger.info(data)
+						})
+						.catch((error) => {return `Error occured! ${error.message}`})
+					)
+					.catch((error) => {return `Error occured! ${error.message}`})
+			}
+        },
+
+        // rtcrd: Get the internal RTC  date and time(yy/mm/dd hh:mm:ss) in UTC adapted to ISO 8601
+        // Usage: daq.rtcrd --stack <id> 
+        // Example: mol $ daq.rtcrd --stack 0; Get the nternal RTC time and date on Board 0
+        rtcrd: {
+            params: {
+                stack  : { type: "number", integer: true, min: 0, max: 7},
+            },
+
+            async handler(ctx) {
+
+                let addr = DEFAULT_HW_ADD + ctx.params.stack
+                let cmd = I2C_RTC_YEAR_ADD
+                let length = 6
+                let buffer = Buffer.alloc(6)
+
+                return await i2c.openPromisified(1)
+                    .then(i2c1 => i2c1.readI2cBlock(addr, cmd, length, buffer)
+                        .then((rawData) => {
+                            i2c1.close()   
+
+                            let year   = 2000 + (rawData.buffer.readIntLE(0, 1))
+                            let month  = (rawData.buffer.readIntLE(1, 1))  //Um valor inteiro que representa o mês, começando com 0 para Janeiro até 11 para Dezembro.
+                            let day    = rawData.buffer.readIntLE(2, 1) // 
+                            let hour   = rawData.buffer.readIntLE(3, 1)
+                            let minute = rawData.buffer.readIntLE(4, 1)
+                            let second = rawData.buffer.readIntLE(5, 1)
+
+                            data.megaind.rtc_utc = new Date(Date.UTC(year, month, day, hour, minute, second));
+                            
+                            const option = {
+                                year        : 'numeric',
+                                month       : ('long' || 'short' || 'numeric'),
+                                weekday     : ('long' || 'short'),
+                                day         : 'numeric',
+                                hour        : 'numeric',
+                                minute      : 'numeric',
+                                second      : 'numeric',
+                        //      era         : ('long' || 'short'),
+                                timeZoneName: ('long' || 'short')
+                            }
+
+                            const locale    = 'pt-br'
+                            return data.megaind.rtc_local = data.megaind.rtc_utc.toLocaleDateString(locale, option)
+                        })
+                        .catch((error) => {return `Error occured! ${error.message}`})
+                    )
+                    .catch((error) => {return `Error occured! ${error.message}`})
+            }
+        },
+
+        // Set the internal RTC  date and time(yy/mm/dd hh:mm:ss) in UTC adapted to ISO 8601 
+        // Usage: daq.rtcwr --stack <id> --year <yy> --month <mm> --date <dd> --hour<hh> --minute <mm> --second <ss>
+        // Example:	mol $ daq.rtcwr --stack 0 --year 21 --month 04 --date 09 --hour 14 --minute 05 --second 30; Set the internal RTC time and date on Board 0 at 2021/04/09  14:05:30
+        rtcwr: {
+            params: {
+                stack : { type: "number", integer: true, min: 0, max: 7},
+                year  : { type: "number", integer: true, min: 0, max: 99},
+                month : { type: "number", integer: true, min: 1, max: 12},
+                date  : { type: "number", integer: true, min: 1, max: 31},
+                hour  : { type: "number", integer: true, min: 0, max: 23},
+                minute: { type: "number", integer: true, min: 0, max: 59},
+                second: { type: "number", integer: true, min: 0, max: 59},
+            },
+
+            async handler(ctx){
+                let addr = DEFAULT_HW_ADD + ctx.params.stack
+                let cmd = I2C_RTC_SET_YEAR_ADD
+                let length = 7
+                let buffer = Buffer.from([ ctx.params.year, ctx.params.month, ctx.params.date, ctx.params.hour, ctx.params.minute, ctx.params.second, CALIBRATION_KEY]);
+
+                return await i2c.openPromisified(1)
+                    .then(i2c1 => i2c1.writeI2cBlock(addr, cmd, length, buffer)
+                        .then((rawData) => {
+                            i2c1.close()                                 
+                            return 'Success!'
+                        })
+                        .catch((error) => {return `Error occured! ${error.message}`})
+                    )
+                    .catch((error) => {return `Error occured! ${error.message}`})
+
+            }
+        },
+        
+        // data: Shows card data: raspberrypi, megaind, 4relind and wdt
+        // Usage: daq.data
+        // Example: mol $ call daq.data
+        data: {
+            handler(){
+                return data 
+            }            
+        },
+
+
+
+        // *Voltages IO
 
         // uoutwr : Write 0-10V output voltage value (V)
         // Usage  : daq.uoutwr --stack <id> --channel <channel> --value <value>
@@ -207,7 +369,7 @@ broker.createService({
 
         
         
-        
+        // *Currents IO
         
         // ioutwr : Write 4-20mA output value (mA)
         // Usage  : daq.ioutwr --stack <id> --channel <channel> --value <value>
@@ -291,7 +453,7 @@ broker.createService({
 
 
 
-
+        // *Analog Out and Digital In
 
         // odwr   : Write open-drain output PWM value (0..100%)
         // Usage  : daq.odwr --stack <id> --channel <channel> --value <value>
@@ -345,175 +507,83 @@ broker.createService({
             }
         },        
 
-
-
-
-
-
         // optord: Read dry opto status,
         // Usage  : daq.optord --stack <id> --channel <channel>
         // Example: mol $ call daq.optord --stack 0 --channel 2; Read Status of opto input pin 2 on Board 0
+        // Example: mol $ call daq.optord --stack 0 --channel 0; Read Status of all opto input on Board 0. If opto 1 and 4 is on, return 9 (0b00001001)
         optord: {
             params: {
                 stack  : { type: "number", integer: true, min: 0, max: 7},
-                //channel: { type: "number", integer: true, min: 1, max: 4}
+                channel: { type: "number", integer: true, min: 0, max: 4}
             },
 
             async handler(ctx) {
 
                  let addr = DEFAULT_HW_ADD + ctx.params.stack
-                 let cmd = I2C_MEM_OPTO_IN_VAL + (ctx.params.channel - 1)
+                 let cmd = I2C_MEM_OPTO_IN_VAL
 
-                return await i2c.openPromisified(1)
+                if(ctx.params.channel != 0){
+                    return await i2c.openPromisified(1)
                     .then(i2c1 => i2c1.readByte(addr, cmd)
                         .then((rawData) => {
-                            broker.logger.info(rawData)
+                            if((1 << (ctx.params.channel -1)) & rawData) {
+                                return data.megaind.optord[`channel_${ctx.params.channel}`] = 1
+                            }
                             i2c1.close()    
-                            return data.megaind.odrd[`channel_${ctx.params.channel}`] = rawData/10000  
-                            // tenho que verificar se o valor for maior do que 1 é 1 se for menor 0 ver com calma amanha
+                            return data.megaind.optord[`channel_${ctx.params.channel}`] = 0
                         })
                     )
                     .catch((error) => {return `Error occured! ${error.message}`})
+                }
+
+                else{
+                    return await i2c.openPromisified(1)
+                    .then(i2c1 => i2c1.readByte(addr, cmd)
+                        .then((rawData) => {
+                            i2c1.close()    
+                            return data.megaind.optord[`channel_${ctx.params.channel}`] = rawData
+                        })
+                    )
+                    .catch((error) => {return `Error occured! ${error.message}`})
+                }
+                
             }
         },    
 
-        // Read All data
-        data: {
-            handler(){
-                return data 
-            }            
-        },
-
-        // Get the internal RTC  date and time(yy/mm/dd hh:mm:ss) ISO 8601
-        rtcrd: {
+        // call daq.rwr --stack 0 --channel 0 --value 15
+        // write: Set relays On/Off
+        // "\tUsage:       4relind <id> write <channel> <on/off>\n",
+        // "\tUsage:       4relind <id> write <value>\n",
+        // "\tExample:     4relind 0 write 2 On; Set Relay #2 on Board #0 On\n"};
+        rwr: {
             params: {
                 stack  : { type: "number", integer: true, min: 0, max: 7},
+                channel: { type: "number", integer: true, min: 0, max: 4},
+                value  : { type: "number", integer: true, min: 0, max: 15}
             },
-
+            
             async handler(ctx) {
 
-                let addr = DEFAULT_HW_ADD + ctx.params.stack
-                let cmd = I2C_RTC_YEAR_ADD
-                let length = 6
-                let buffer = Buffer.alloc(6)
+                 let addr = RELAY4_HW_I2C_BASE_ADD + (0x07 ^ ctx.params.stack)
+                 let cmd = RELAY4_OUTPORT_REG_ADD
+                 let cmd = RELAY4_CFG_REG_ADD
+                 let word = ctx.params.value
 
+ 
                 return await i2c.openPromisified(1)
-                    .then(i2c1 => i2c1.readI2cBlock(addr, cmd, length, buffer)
+                    .then(i2c1 => i2c1.writeByte(addr, cmd, word)
                         .then((rawData) => {
-                            i2c1.close()   
-
-                            let year   = 2000 + (rawData.buffer.readIntLE(0, 1))
-                            let month  = (rawData.buffer.readIntLE(1, 1))  //Um valor inteiro que representa o mês, começando com 0 para Janeiro até 11 para Dezembro.
-                            let day    = rawData.buffer.readIntLE(2, 1) // 
-                            let hour   = rawData.buffer.readIntLE(3, 1)
-                            let minute = rawData.buffer.readIntLE(4, 1)
-                            let second = rawData.buffer.readIntLE(5, 1)
-
-                            data.megaind.rtc_utc = new Date(Date.UTC(year, month, day, hour, minute, second));
-                            
-                            const option = {
-                                year        : 'numeric',
-                                month       : ('long' || 'short' || 'numeric'),
-                                weekday     : ('long' || 'short'),
-                                day         : 'numeric',
-                                hour        : 'numeric',
-                                minute      : 'numeric',
-                                second      : 'numeric',
-                        //      era         : ('long' || 'short'),
-                                timeZoneName: ('long' || 'short')
-                            }
-
-                            const locale    = 'pt-br'
-                            return data.megaind.rtc_local = data.megaind.rtc_utc.toLocaleDateString(locale, option)
-                        })
-                        .catch((error) => {return `Error occured! ${error.message}`})
-                    )
-                    .catch((error) => {return `Error occured! ${error.message}`})
-            }
-        },
-
-        // Set the internal RTC  date and time(mm/dd/yy hh:mm:ss)
-        // megaind <id> rtcwr <mm> <dd> <yy> <hh> <mm> <ss> 
-        // Example:	megaind 0 rtcwr 9 15 20 21 43 15; Set the internal RTC time and date on Board #0 at Sept/15/2020  21:43:15\n"};
-        rtcwr: {
-            params: {
-                stack : { type: "number", integer: true, min: 0, max: 7},
-                month : { type: "number", integer: true, min: 1, max: 12},
-                date  : { type: "number", integer: true, min: 1, max: 31},
-                year  : { type: "number", integer: true, min: 0, max: 99},
-                hour  : { type: "number", integer: true, min: 0, max: 23},
-                minute: { type: "number", integer: true, min: 0, max: 59},
-                second: { type: "number", integer: true, min: 0, max: 59},
-            },
-
-            async handler(ctx){
-                let addr = DEFAULT_HW_ADD + ctx.params.stack
-                let cmd = I2C_RTC_SET_YEAR_ADD
-                let length = 7
-                let buffer = Buffer.from([ ctx.params.year, ctx.params.month, ctx.params.date, ctx.params.hour, ctx.params.minute, ctx.params.second, CALIBRATION_KEY]);
-
-                return await i2c.openPromisified(1)
-                    .then(i2c1 => i2c1.writeI2cBlock(addr, cmd, length, buffer)
-                        .then((rawData) => {
+                            broker.logger.info(rawData)
                             i2c1.close()                                 
-                            return 'Success!'
+                            return 'done'
                         })
-                        .catch((error) => {return `Error occured! ${error.message}`})
                     )
                     .catch((error) => {return `Error occured! ${error.message}`})
-
             }
-        },
-
-
-
-                // Display the board status and firmware version number
-        // Firmware ver 01.04, CPU temperature 38 C, Power source 23.77 V, Raspberry 5.22 V
-        // call daq.board --stack 0
-        board: {
-            params: {
-				stack  : { type: "number", integer: true, min: 0, max: 7},
-			},
-
-			async handler(ctx) {
-
-                let addr = DEFAULT_HW_ADD + ctx.params.stack
-                let cmd = I2C_MEM_DIAG_TEMPERATURE
-                let length = 8
-                let buffer = Buffer.alloc(8)
-
-				return await i2c.openPromisified(1)
-					.then(i2c1 => i2c1.readI2cBlock(addr, cmd, length, buffer)
-						.then((rawData) => {
-							i2c1.close()                                
-                            data.megaind.board.temperature = rawData.buffer.readIntLE(0, 1)
-                            data.megaind.board.power = Math.round((rawData.buffer.readIntLE(1, 2)/1000.0) * 1e2 ) / 1e2
-                            data.raspberrypi.power = Math.round((rawData.buffer.readIntLE(3, 3)/1000.0) * 1e2 ) / 1e2
-                            let major = rawData.buffer.readIntLE(6, 1)
-                            let minor = rawData.buffer.readIntLE(7, 1)
-                            data.megaind.board.firmware = major + minor / 100.0
-                            broker.logger.info(data)
-						})
-						.catch((error) => {return `Error occured! ${error.message}`})
-					)
-					.catch((error) => {return `Error occured! ${error.message}`})
-			}
-        },
-
-        say: {
-            handler(ctx){
-                return this.sayHello(ctx.params.name)
-            }
-        },
+        },        
 
 
     },
-
-    methods: {
-        sayHello(name){
-            return `hello ${name}`
-        },    
-    }
 });
 
 data.raspberrypi.nodeID = broker.nodeID,
@@ -601,7 +671,7 @@ broker.repl()
         -list:          List all megaind boards connected
                         return the # of boards and stack level for every board
         board           Display the board status and firmware version number - ok
-        optord:         Read dry opto status
+        optord:         Read dry opto status - ok
         countrd:        Read dry opto transitions count
         countrst:       Reset opto transitions countors
         edgerd:         Read opto inputs transitions type, ret 0 - disable, 1 - rising, 2 - falling, 3 - both
@@ -610,10 +680,10 @@ broker.repl()
         uoutwr:         Write 0-10V output voltage value (V) - ok
         ioutrd:         Read 4-20mA Output current value (mA) - ok
         ioutwr:         Write 4-20mA output value (mA) - ok
-        odrd:           Read open-drain Output PWM value(0..100%) 
-        odwr:           Write open-drain output PWM value (0..100%)
+        odrd:           Read open-drain Output PWM value(0..100%) - ok
+        odwr:           Write open-drain output PWM value (0..100%) - ok
         uinrd:          Read 0-10V input value (V) - ok
-        pmuinrd:        Read +/-10V input value (V). Warning: This value is valid only if the corespondung jumper is connected
+        pmuinrd:        Read +/-10V input value (V). Warning: This value is valid only if the corespondung jumper is connected ?
         iinrd:          Read 4-20mA input value (mA) - ok
         uincal:         Calibrate one 0-10V input channel, the calibration must be done in 2 points at min 5V apart
         iincal:         Calibrate one 4-20mA input channel, the calibration must be done in 2 points at min 10mA apart
