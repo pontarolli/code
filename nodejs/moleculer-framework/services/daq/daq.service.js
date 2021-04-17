@@ -3,7 +3,8 @@
 "use strict";
 
 const { ServiceBroker } = require("moleculer")
-const i2c               = require('i2c-bus')
+const i2c               = require('i2c-bus');
+
 
 const RELAY4_HW_I2C_BASE_ADD = 0x38
 
@@ -24,7 +25,9 @@ const OFF = 0
 
 const DEFAULT_HW_ADD = 0x50
 
-const CALIBRATION_KEY = 0xaa
+//const CALIBRATION_KEY = 0xaa
+const CALIBRATION_KEY = 170
+const RESET_CALIBRATION_KEY	= 0x55 
 
 const I2C_MEM_DIAG_TEMPERATURE = 114
 const I2C_MEM_DIAG_24V = 115
@@ -61,6 +64,7 @@ const I2C_RTC_SET_SECOND_ADD = 81
 const I2C_RTC_CMD_ADD        = 82
 
 const broker = new ServiceBroker({
+    transporter: "nats://localhost:4222",
 	validator: "Fastest",
 	logger   : "Console",
 });
@@ -137,6 +141,7 @@ broker.createService({
         // Example: mol $ call daq.uoutrd --stack 0 --channel 2; Read the voltage on 0-10V out channel 2 on Board 0
         uoutrd: {            
 			params: { 
+                
 				stack  : { type: "number", integer: true, min: 0, max: 7},
 				channel: { type: "number", integer: true, min: 1, max: 4}
 			},
@@ -279,89 +284,6 @@ broker.createService({
                 return value          
             }
         },    
-
-
-
-
-
-
-
-
-
-
-        // Desenvolvendo ... 
-
-
-
-        // Set the internal RTC  date and time(yy/mm/dd hh:mm:ss) in UTC adapted to ISO 8601 
-        // Usage: daq.rtcwr --stack <id> --year <yy> --month <mm> --date <dd> --hour<hh> --minute <mm> --second <ss>
-        // Example:	mol $ call daq.rtcwr --stack 0 --year 21 --month 04 --date 09 --hour 14 --minute 05 --second 30; Set the internal RTC time and date on Board 0 at 2021/04/09  14:05:30
-
-        //call daq.rtcwr --stack 0 --year 47 --month 04 --date 09 --hour 14 --minute 05 --second 30
-        //ele so grava quando escrever pela segunda vez, não achei o porque
-        rtcwr: {
-            params: {
-                stack : { type: "number", integer: true, min: 0, max: 7},
-                year  : { type: "number", integer: true, min: 0, max: 99},
-                month : { type: "number", integer: true, min: 1, max: 12},
-                date  : { type: "number", integer: true, min: 1, max: 31},
-                hour  : { type: "number", integer: true, min: 0, max: 23},
-                minute: { type: "number", integer: true, min: 0, max: 59},
-                second: { type: "number", integer: true, min: 0, max: 59},
-            },
-
-            async handler(ctx){
-                let addr = DEFAULT_HW_ADD + ctx.params.stack
-                let cmd = I2C_RTC_SET_YEAR_ADD
-                let length = 7
-                let buffer = Buffer.from([ ctx.params.year, ctx.params.month, ctx.params.date, ctx.params.hour, ctx.params.minute, ctx.params.second, CALIBRATION_KEY]);
-
-                return await i2c.openPromisified(1)
-                    .then(i2c1 => i2c1.writeI2cBlock(addr, cmd, length, buffer)
-                        .then((rawData) => {
-                            i2c1.close()                                 
-                            return 'Success!'
-                        })
-                        .catch((error) => {return `Error occured! ${error.message}`})
-                    )
-                    .catch((error) => {return `Error occured! ${error.message}`})
-
-            }
-        },
-
-        // call daq.rwr --stack 0 --channel 0 --value 15
-        // write: Set relays On/Off
-        // "\tUsage:       4relind <id> write <channel> <on/off>\n",
-        // "\tUsage:       4relind <id> write <value>\n",
-        // "\tExample:     4relind 0 write 2 On; Set Relay #2 on Board #0 On\n"};
-        // rwr: {
-        //     params: {
-        //         stack  : { type: "number", integer: true, min: 0, max: 7},
-        //         channel: { type: "number", integer: true, min: 0, max: 4},
-        //         value  : { type: "number", integer: true, min: 0, max: 15}
-        //     },
-            
-        //     async handler(ctx) {
-
-        //          let addr = RELAY4_HW_I2C_BASE_ADD + (0x07 ^ ctx.params.stack)
-        //          let cmd = RELAY4_OUTPORT_REG_ADD
-        //          let cmd = RELAY4_CFG_REG_ADD
-        //          let word = ctx.params.value
-
- 
-        //         return await i2c.openPromisified(1)
-        //             .then(i2c1 => i2c1.writeByte(addr, cmd, word)
-        //                 .then((rawData) => {
-        //                     broker.logger.info(rawData)
-        //                     i2c1.close()                                 
-        //                     return 'done'
-        //                 })
-        //             )
-        //             .catch((error) => {return `Error occured! ${error.message}`})
-        //     }
-        // },        
-
-
     },
 
     methods: {
@@ -386,6 +308,7 @@ broker.createService({
             )
             .catch((error) => {return `Error occured! ${error.message}`})
         },
+
 
         async readByte(addr, cmd){
             return await i2c.openPromisified(1)
@@ -420,7 +343,6 @@ broker.createService({
             }
             return OFF
         },
-
         
         toValueBoard(rawData){
             let raspberrypi        = {}
@@ -441,9 +363,17 @@ broker.createService({
 
             let rtc = {}
 
+            // let year   = rawData.buffer.readIntLE(0, 1) + 2000
+            // let month  = rawData.buffer.readIntLE(1, 1)         //Um valor inteiro que representa o mês, começando com 0 para Janeiro até 11 para Dezembro.
+            // let day    = rawData.buffer.readIntLE(2, 1)
+            // let hour   = rawData.buffer.readIntLE(3, 1)
+            // let minute = rawData.buffer.readIntLE(4, 1)
+            // let second = rawData.buffer.readIntLE(5, 1)
+
             let year   = rawData.buffer.readIntLE(0, 1) + 2000
             let month  = rawData.buffer.readIntLE(1, 1)         //Um valor inteiro que representa o mês, começando com 0 para Janeiro até 11 para Dezembro.
             let day    = rawData.buffer.readIntLE(2, 1)
+            
             let hour   = rawData.buffer.readIntLE(3, 1)
             let minute = rawData.buffer.readIntLE(4, 1)
             let second = rawData.buffer.readIntLE(5, 1)
@@ -606,7 +536,7 @@ broker.repl()
         rs485rd:        Read the RS485 communication settings
         rs485wr:        Write the RS485 communication settings
         rtcrd:          Get the internal RTC  date and time(mm/dd/yy hh:mm:ss) - ok
-        rtcwr:          Set the internal RTC  date and time(mm/dd/yy hh:mm:ss) - ok
+        rtcwr:          Set the internal RTC  date and time(mm/dd/yy hh:mm:ss) - tenho que executar duas vezes para gravar
 
 
                 Usage:          megaind -v
