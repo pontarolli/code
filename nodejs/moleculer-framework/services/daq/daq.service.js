@@ -16,12 +16,24 @@ const RELAY4_OUTPORT_REG_ADD = 0x01
 const RELAY4_POLINV_REG_ADD  = 0x02
 const RELAY4_CFG_REG_ADD     = 0x03
 
+const mask = new ArrayBuffer(4);
+mask [0]   = 0x80;
+mask [1]   = 0x40;
+mask [2]   = 0x20;
+mask [3]   = 0x10;
+
+const  inMask = new ArrayBuffer(4);
+inMask[0]     = 0x08;
+inMask[1]     = 0x04;
+inMask[2]     = 0x02;
+inMask[3]     = 0x01;
+
 // status
 const ERROR = -1
 const OK    = 0
-const FAIL  = -1
-const ON = 1
-const OFF = 0
+
+const ON    = 1
+const OFF   = 0
 
 const DEFAULT_HW_ADD = 0x50
 
@@ -64,7 +76,7 @@ const I2C_RTC_SET_SECOND_ADD = 81
 const I2C_RTC_CMD_ADD        = 82
 
 const broker = new ServiceBroker({
-    transporter: "nats://localhost:4222",
+    // transporter: "nats://localhost:4222",
 	validator: "Fastest",
 	logger   : "Console",
 });
@@ -73,6 +85,9 @@ broker.createService({
     name: "daq",
 
     actions: {   
+
+        // *megaind-rpi
+
         // *Boards
 
         // board: Display the board status and firmware version number.
@@ -274,7 +289,7 @@ broker.createService({
         optord: {
             params: {
                 stack  : { type: "number", integer: true, min: 0, max: 7},
-                channel: { type: "number", integer: true, min: 0, max: 4}
+                channel: { type: "number", integer: true, min: 1, max: 4}
             },
             async handler(ctx) {
                 let addr    = this.toAddress(ctx.params.stack)
@@ -284,9 +299,87 @@ broker.createService({
                 return value          
             }
         },    
+
+
+        // *4relind-rpi
+        
+        // rwr    : Set relays On/Off
+        // Usage  : daq.rwr --stack <id> --channel <channel> --value <value>
+        // Example: mol $ call daq.rwr --stack 0 --channel 2 --value 1; Set Relay 2 on Board 0 On
+        rwr: {
+            params: {   
+                stack  : { type: "number", integer: true, min: 0, max: 7},
+                channel: { type: "number", integer: true, min: 1, max: 4},
+                value  : { type: "number", integer: true, min: 0, max: 1}
+            },
+
+            async handler(ctx){
+
+                let addr   = RELAY4_HW_I2C_BASE_ADD + ctx.params.stack ^ 0x07 //7 bit address (will be left shifted to add the read write bit)
+                let cmd    = RELAY4_OUTPORT_REG_ADD
+                let byte   = 0
+                let status = 0
+                
+                byte = await this.check(addr)
+                byte = this.ioToRelay(byte)
+
+                if(ctx.params.value == OFF){
+                    byte   = byte & (~(1 << (ctx.params.channel - 1)))
+                    byte   = this.relayToIo(byte)
+                    status = await this.writeByte(addr, cmd, byte)
+                }
+
+                else{
+                    byte   = byte | (1 << (ctx.params.channel - 1))
+                    byte   = this.relayToIo(byte)
+                    status = await this.writeByte(addr, cmd, byte)
+                }
+
+            return status
+            }
+        },
+        
+        // rrd    : Read relays status,
+        // Usage  : daq.rrd --stack <id> --channel <channel>
+        // Example: mol $ call daq.rrd --stack 0 --channel 2; Read Status of Relay 2 on Board 0
+        rrd: {
+            handler(ctx){
+
+            }
+        }
     },
 
     methods: {
+        relayToIo(byte){
+            let val = 0;
+            for(let i = 0; i<4; i+=1){
+                if ((byte & (1 << i)) !=0 ) val += mask[i]
+            }
+        return val
+        },
+
+        ioToRelay(byte){
+            let val = 0
+            for(let i = 0; i<4; i+=1){
+                if ((byte & mask[i]) != 0 ) val += (1 << i)
+            }
+        return val
+        },
+
+        async check(addr){
+            let cfg = await this.readByte(addr, RELAY4_CFG_REG_ADD)
+            if(cfg != 0x0f){
+                await this.writeByte(addr, RELAY4_CFG_REG_ADD, 0x0f)
+                await this.writeByte(addr, RELAY4_OUTPORT_REG_ADD, 0x00)
+            }
+        return await this.readByte(addr, RELAY4_INPORT_REG_ADD)
+        },
+
+
+
+
+
+
         async readWord(addr, cmd){
             return await i2c.openPromisified(1)
             .then(i2c1 => i2c1.readWord(addr, cmd)
@@ -316,6 +409,17 @@ broker.createService({
                 .then(rawData => {
                     i2c1.close()  
                     return rawData
+                })
+            )
+            .catch(error => {return `Error occured! ${error.message}`})
+        },
+
+        async writeByte(addr, cmd, byte){
+            return await i2c.openPromisified(1)
+            .then(i2c1 => i2c1.writeByte(addr, cmd, byte)
+                .then(_ => {
+                    i2c1.close()                                 
+                    return OK
                 })
             )
             .catch(error => {return `Error occured! ${error.message}`})
