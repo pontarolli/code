@@ -6,15 +6,53 @@ const { ServiceBroker } = require("moleculer")
 const i2c               = require('i2c-bus');
 
 
-const RELAY4_HW_I2C_BASE_ADD = 0x38
+// wdt-rpi 
+const HW_ADD = 0x30
 
-// const RELAY4_HW_I2C_BASE_ADD = 0x3f
-// ok const RELAY4_HW_I2C_BASE_ADD = 0x30
+const RELOAD_ADD = 0x00
+const RELOAD_KEY = 0xCA
+
+const WRITE_INTERVAL_ADD = 0x01
+const READ_INTERVAL_ADD  = 0x03
+
+const WRITE_INITIAL_INTERVAL_ADD = 0x05
+const READ_INITIAL_INTERVAL_ADD  = 0x07
+
+const RESETS_COUNT_ADD      = 0x09
+const CLEAR_RESET_COUNT_ADD = 0x0b
+const V_IN_ADD              = 0x0c
+
+const POWER_OFF_INTERVAL_SET_ADD = 14
+const POWER_OFF_INTERVAL_GET_ADD = 18
+const V_BAT_ADD                  = 22
+const V_OUT_ADD                  = 24
+const TEMP_ADD                   = 26
+const CHARGE_STAT_ADD            = 27
+const POWER_OFF_ON_BATTERY_ADD   = 28
+const POWER_SW_USAGE_ADD         = 29
+const POWER_SW_STATUS_ADD        = 30
+
+const WDT_MAX_POWER_OFF_INTERVAL = 31 * 24 * 3600
+
+
+
+
+
+
+
+
+
+
+
+
+const RELAY4_HW_I2C_BASE_ADD = 0x38
+const RELAY4_HW_I2C_7_BIT = 0x07 //7 bit address (will be left shifted to add the read write bit)
+
 
 const RELAY4_INPORT_REG_ADD  = 0x00
 const RELAY4_OUTPORT_REG_ADD = 0x01
-const RELAY4_POLINV_REG_ADD  = 0x02
 const RELAY4_CFG_REG_ADD     = 0x03
+const RELAY4_CFG_DIRECTION   = 0x0f
 
 const mask = new ArrayBuffer(4);
 mask [0]   = 0x80;
@@ -303,10 +341,10 @@ broker.createService({
 
         // *4relind-rpi
         
-        // rwr    : Set relays On/Off
-        // Usage  : daq.rwr --stack <id> --channel <channel> --value <value>
-        // Example: mol $ call daq.rwr --stack 0 --channel 2 --value 1; Set Relay 2 on Board 0 On
-        rwr: {
+        // setRelay    : Set relays On/Off
+        // Usage  : daq.setRelay --stack <id> --channel <channel> --value <value>
+        // Example: mol $ call daq.setRelay --stack 0 --channel 2 --value 1; Set Relay 2 on Board 0 On
+        setRelay: {
             params: {   
                 stack  : { type: "number", integer: true, min: 0, max: 7},
                 channel: { type: "number", integer: true, min: 1, max: 4},
@@ -315,7 +353,7 @@ broker.createService({
 
             async handler(ctx){
 
-                let addr   = RELAY4_HW_I2C_BASE_ADD + ctx.params.stack ^ 0x07 //7 bit address (will be left shifted to add the read write bit)
+                let addr   = RELAY4_HW_I2C_BASE_ADD + ctx.params.stack ^ RELAY4_HW_I2C_7_BIT 
                 let cmd    = RELAY4_OUTPORT_REG_ADD
                 let byte   = 0
                 let status = 0
@@ -324,13 +362,13 @@ broker.createService({
                 byte = this.ioToRelay(byte)
 
                 if(ctx.params.value == OFF){
-                    byte   = byte & (~(1 << (ctx.params.channel - 1)))
+                    byte   &= (~(1 << (ctx.params.channel - 1)))
                     byte   = this.relayToIo(byte)
                     status = await this.writeByte(addr, cmd, byte)
                 }
 
                 else{
-                    byte   = byte | (1 << (ctx.params.channel - 1))
+                    byte   |= (1 << (ctx.params.channel - 1))
                     byte   = this.relayToIo(byte)
                     status = await this.writeByte(addr, cmd, byte)
                 }
@@ -338,15 +376,203 @@ broker.createService({
             return status
             }
         },
-        
-        // rrd    : Read relays status,
+
+        // call daq.setAllRelays --stack 0 --value 10
+        setAllRelays: {
+            params: {   
+                stack  : { type: "number", integer: true, min: 0, max: 7},
+                value  : { type: "number", integer: true, min: 0, max: 15}
+            },
+
+            async handler(ctx){
+
+                let addr   = RELAY4_HW_I2C_BASE_ADD + ctx.params.stack ^ RELAY4_HW_I2C_7_BIT 
+                let cmd    = RELAY4_OUTPORT_REG_ADD
+                let byte   = 0
+                let status = 0
+                
+                byte = await this.check(addr)
+                
+
+                let value = this.relayToIo(ctx.params.value)
+                status = await this.writeByte(addr, cmd, value)
+
+
+            return status
+            }
+        },
+       
+
+        // getRelay    : Read relays status,
         // Usage  : daq.rrd --stack <id> --channel <channel>
         // Example: mol $ call daq.rrd --stack 0 --channel 2; Read Status of Relay 2 on Board 0
-        rrd: {
+        getRelay: {
+            params: {   
+                stack  : { type: "number", integer: true, min: 0, max: 7},
+                channel: { type: "number", integer: true, min: 1, max: 4}
+            },
+
+            async handler(ctx){
+                let addr   = RELAY4_HW_I2C_BASE_ADD + ctx.params.stack ^ RELAY4_HW_I2C_7_BIT 
+                let byte = await this.check(addr)
+
+                byte = this.ioToRelay(byte)
+                byte = byte & (1 << (ctx.params.channel - 1))
+
+                if(byte == OFF) return OFF
+                return ON
+            }
+        },
+
+
+        // Example: mol $ call daq.rrdall --stack 0
+        getAllRelays: {
+            params: {   
+                stack  : { type: "number", integer: true, min: 0, max: 7},
+            },
+
+            async handler(ctx){
+                let addr = RELAY4_HW_I2C_BASE_ADD + ctx.params.stack ^ RELAY4_HW_I2C_7_BIT  
+                let byte = await this.check(addr)
+                    byte = this.ioToRelay(byte)
+                return byte
+            }
+        },
+
+        // call daq.getOpto --stack 0 --channel 2
+        getOpto: {
+            params: {   
+                stack  : { type: "number", integer: true, min: 0, max: 7},
+                channel: { type: "number", integer: true, min: 1, max: 4}
+            },
+
+            async handler(ctx){
+                let addr   = RELAY4_HW_I2C_BASE_ADD + ctx.params.stack ^ RELAY4_HW_I2C_7_BIT 
+                let byte = await this.check(addr)
+
+                byte = this.ioToOpto(byte)
+                byte = byte & (1 << (ctx.params.channel - 1))
+
+                if(byte == OFF) return OFF
+                return ON
+            }
+        },
+
+        // call daq.getOptoall --stack 0 
+        getAllOptos: {
+            params: {   
+                stack  : { type: "number", integer: true, min: 0, max: 7},
+            },
+
+            async handler(ctx){
+                let addr   = RELAY4_HW_I2C_BASE_ADD + ctx.params.stack ^ RELAY4_HW_I2C_7_BIT 
+                let byte = await this.check(addr)
+                byte = this.ioToOpto(byte)
+                return byte
+            }
+        },
+
+
+
+        // *wdt-rpi
+
+        getPeriod: {
             handler(ctx){
 
             }
-        }
+        },
+        setPeriod: {
+            handler(ctx){
+
+            }
+        },
+        reload: {
+            handler(ctx){
+
+            }
+        },
+        setDefaultPeriod: {
+            handler(ctx){
+
+            }
+        },
+        getDefaultPeriod: {
+            handler(ctx){
+
+            }
+        },
+        setOffInterval: {
+            handler(ctx){
+
+            }
+        },
+        getOffInterval: {
+            handler(ctx){
+
+            }
+        },
+        getResetCount: {
+            handler(ctx){
+
+            }
+        },
+        getVin: {
+            handler(ctx){
+
+            }
+        },
+        getVrasp: {
+            handler(ctx){
+
+            }
+        },
+        getVrasp: {
+            handler(ctx){
+
+            }
+        },
+        getVbat: {
+            handler(ctx){
+
+            }
+        },
+        getTemp: {
+            handler(ctx){
+
+            }
+        },
+        getChargeStat: {
+            handler(ctx){
+
+            }
+        },
+        getRepowerOnBattery: {
+            handler(ctx){
+
+            }
+        },
+        setRepowerOnBattery: {
+            handler(ctx){
+
+            }
+        },
+        getPowerButtonEnable: {
+            handler(ctx){
+
+            }
+        },
+        setPowerButtonEnable: {
+            handler(ctx){
+
+            }
+        },
+        getPowerButtonPush: {
+            handler(ctx){
+
+            }
+        },
+       
+        
     },
 
     methods: {
@@ -366,13 +592,21 @@ broker.createService({
         return val
         },
 
+        ioToOpto(byte){
+            let val = 0
+            for(let i = 0; i<4; i+=1){
+                if ((byte & inMask[i]) == 0 ) val += (1 << i)
+            }
+        return val
+        },
+
         async check(addr){
             let cfg = await this.readByte(addr, RELAY4_CFG_REG_ADD)
-            if(cfg != 0x0f){
-                await this.writeByte(addr, RELAY4_CFG_REG_ADD, 0x0f)
-                await this.writeByte(addr, RELAY4_OUTPORT_REG_ADD, 0x00)
+            if(cfg != RELAY4_CFG_DIRECTION){
+                await this.writeByte(addr, RELAY4_CFG_REG_ADD, RELAY4_CFG_DIRECTION)
+                await this.writeByte(addr, RELAY4_OUTPORT_REG_ADD, 0)
             }
-        return await this.readByte(addr, RELAY4_INPORT_REG_ADD)
+        return await this.readByte(addr, RELAY4_INPORT_REG_ADD) 
         },
 
 
@@ -401,7 +635,6 @@ broker.createService({
             )
             .catch((error) => {return `Error occured! ${error.message}`})
         },
-
 
         async readByte(addr, cmd){
             return await i2c.openPromisified(1)
@@ -435,7 +668,6 @@ broker.createService({
             )
             .catch((error) => {return `Error occured! ${error.message}`})
         },
-
 
         toValue(rawData){
             return  rawData/1000
