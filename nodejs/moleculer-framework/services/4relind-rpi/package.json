@@ -1,0 +1,17 @@
+{
+  "name": "4relind",
+  "version": "1.0.0",
+  "description": "",
+  "main": "4relind-rpi.service.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "i2c-bus": "^5.2.1",
+    "moleculer": "^0.14.12",
+    "moleculer-repl": "^0.6.4",
+    "nats": "^1.4.12"
+  }
+}
