@@ -8,7 +8,7 @@
 
 Set relays On/Off
 
-Usage   : 4relind-rpi.setRelay --stack <id> --channel <channel> --value <value>
+Usage   : `4relind-rpi.setRelay --stack <id> --channel <channel> --value <value>`
 
 Example : mol $ call 4relind-rpi.setRelay --stack 0 --channel 2 --value 1; Set Relay 2 on Board 0 On
 
