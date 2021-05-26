@@ -37,9 +37,7 @@ broker.createService({
     name: "4relind-rpi",
 
     actions: {   
-        // setRelay: Set relays On/Off
-        // Usage   : 4relind-rpi.setRelay --stack <id> --channel <channel> --value <value>
-        // Example : mol $ call 4relind-rpi.setRelay --stack 0 --channel 2 --value 1; Set Relay 2 on Board 0 On
+
         setRelay: {
 
             params: {   
@@ -73,10 +71,6 @@ broker.createService({
             return status
             }
         },
-
-        // setAllRelays: Set all relays On/Off
-        // Usage       : 4relind-rpi.setAllRelays --stack <id> --value <value>
-        // Example     : mol $ call 4relind-rpi.setAllRelays --stack 0 --value 3; Set Relay 1 and 2 on Board 0 On
         setAllRelays: {
             params: {   
                 stack  : { type: "number", integer: true, min: 0, max: 7},
@@ -100,10 +94,6 @@ broker.createService({
             return status
             }
         },
-       
-        // getRelay: Read relays status,
-        // Usage   : 4relind-rpi.getRelay --stack <id> --channel <channel>
-        // Example : mol $ call 4relind-rpi.getRelay --stack 0 --channel 2; Read Status of Relay 2 on Board 0
         getRelay: {
             params: {   
                 stack  : { type: "number", integer: true, min: 0, max: 7},
@@ -121,10 +111,6 @@ broker.createService({
                 return ON
             }
         },
-
-        // getAllRelays: Read all relays status,
-        // Usage   : 4relind-rpi.getAllRelays --stack <id> --channel <channel>
-        // Example : mol $ call 4relind-rpi.getAllRelays --stack 0; Read Status of All Relays on Board 0
         getAllRelays: {
             params: {   
                 stack  : { type: "number", integer: true, min: 0, max: 7},
@@ -138,9 +124,6 @@ broker.createService({
             }
         },
 
-        // getOpto: Read inputs status
-        // Usage  : 4relind-rpi.getOpto --stack <id> --channel <channel>
-        // Example: mol $ call 4relind-rpi.getOpto --stack 0 --channel 2; Read Status of Opto 2 on Board 0
         getOpto: {
             params: {   
                 stack  : { type: "number", integer: true, min: 0, max: 7},
@@ -158,10 +141,6 @@ broker.createService({
                 return ON
             }
         },
-
-        // getAllOptos: Read all inputs status
-        // Usage      : 4relind-rpi.getAllOptos --stack <id> 
-        // Example    : mol $ call 4relind-rpi.getAllOptos --stack 0 ; Read Status of all Optos on Board 0
         getAllOptos: {
             params: {   
                 stack  : { type: "number", integer: true, min: 0, max: 7},
@@ -177,7 +156,7 @@ broker.createService({
     },
 
     methods: {
-        async check(addr){
+        async check(addr){ // check pin direction
             let cfg = await this.readByte(addr, RELAY4_CFG_REG_ADD)
             if(cfg != RELAY4_CFG_DIRECTION){
                 await this.writeByte(addr, RELAY4_CFG_REG_ADD, RELAY4_CFG_DIRECTION)
