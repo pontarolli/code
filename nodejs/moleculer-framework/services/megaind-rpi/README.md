@@ -17,6 +17,7 @@ Enable I2C communication first:
 ~$ cd megaind-rpi/
 ~$ npm install
 ~$ npm run dev
+~$ mol $ ...
 ```
 
 # Voltages IO
