@@ -75,6 +75,19 @@ Example     :
     # Set Relay 1 and 2 on Board 0 On
     mol $ call 4relind-rpi.setAllRelays --stack 0 --value 3
     mol $ 0
+    
+    # If use api gateway
+    POST http://localhost:3000/4relind-rpi.setAllRelays?
+    Header
+    {
+        "Content-Type": "application/json"
+    }
+    
+    Body
+    {
+        "stack": 0,
+        "value": 15
+    }
 
 
 ## getRelay: 
