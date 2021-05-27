@@ -3,6 +3,21 @@
 
 This is the nodejs library to control the [Industrial Automation Stackable Card for Raspberry Pi](https://sequentmicrosystems.com/product/raspberry-pi-industrial-automation/) using framework Moleculer. 
 
+## Setup
+
+Enable I2C communication first:
+```bash
+~$ sudo raspi-config
+```
+
+## Usage
+
+```bash
+~$ git clone https://github.com/SequentMicrosystems/megaind-rpi.git
+~$ cd megaind-rpi/
+~$ npm install
+~$ npm run dev
+```
 
 # Voltages IO
 
