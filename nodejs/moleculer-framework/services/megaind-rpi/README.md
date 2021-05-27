@@ -47,6 +47,20 @@ Example:
     # Write 2.5V to 0-10V output channel 2 on Board 0
     mol $ call megaind-rpi.setOutputVoltage --stack 0 --channel 2 --value 25
     mol $ 0
+    
+    # If use api gateway
+    POST http://localhost:3000/megaind-rpi.getInputVoltage?
+    Header
+    {
+        "Content-Type": "application/json"
+    }
+
+    Body
+    {
+        "stack": 0,
+        "channel": 2,
+        "value": 25
+    }
 
 ## getOutputVoltage
 
