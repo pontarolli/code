@@ -11,9 +11,15 @@ This is the nodejs library to control the [Industrial Automation Stackable Card 
 
     Write 0-10V output voltage value (V)
 
+<<<<<<< HEAD
 Usage  : 
 
     megaind-rpi.setOutputVoltage --stack <id> --channel <channel> --value <value>
+=======
+Usage  : `megaind-rpi.setOutputVoltage --stack <id> --channel <channel> --value <value>`
+
+Example: `mol $ call megaind-rpi.setOutputVoltage --stack 0 --channel 2 --value 25`; Write 2.5V to 0-10V output channel 2 on Board 0
+>>>>>>> 08ad3787fe1cb41086428b782db05ef978386198
 
 Params: 
 
@@ -23,10 +29,16 @@ Params:
 
 Return: 
 
+<<<<<<< HEAD
      0 (Succes)
     -1 (Error)
 
 Example: 
+=======
+Usage  : `megaind-rpi.getOutputVoltage --stack <id> --channel <channel> `
+
+Example: `mol $ call megaind-rpi.getOutputVoltage --stack 0 --channel 2`; Read the voltage on 0-10V out channel 2 on Board 0
+>>>>>>> 08ad3787fe1cb41086428b782db05ef978386198
 
     # Write 2.5V to 0-10V output channel 2 on Board 0
     mol $ call megaind-rpi.setOutputVoltage --stack 0 --channel 2 --value 25
@@ -36,9 +48,15 @@ Example:
 
     Read 0-10V Output voltage value(V)
 
+<<<<<<< HEAD
 Usage  : 
 
     megaind-rpi.getOutputVoltage --stack <id> --channel <channel> 
+=======
+Usage  : `megaind-rpi.getInputVoltage --stack <id> --channel <channel>`
+
+Example: `mol $ call megaind-rpi.getInputVoltage --stack 0 --channel 2`; Read the voltage input on 0-10V in channel 2 on Board 0
+>>>>>>> 08ad3787fe1cb41086428b782db05ef978386198
 
 Params: 
 
@@ -57,9 +75,15 @@ Example:
 
 ## getInputVoltage: 
 
+<<<<<<< HEAD
     Read 0-10V input voltage value (V)
 
 Usage  : 
+=======
+Usage  : `megaind-rpi.setOutputCurrent --stack <id> --channel <channel> --value <value>`
+
+Example: `mol $ call megaind-rpi.setOutputCurrent --stack 0 --channel 2 --value 65.62`; Set 10.5mA to 4-20mA output channel 2 on Board 0
+>>>>>>> 08ad3787fe1cb41086428b782db05ef978386198
 
     megaind-rpi.getInputVoltage --stack <id> --channel <channel>
 
@@ -68,11 +92,17 @@ Params:
     stack   - stack level of the megaind card (selectable from address jumpers [0..7])
     channel - selected channel number [1..4]
 
+<<<<<<< HEAD
 Return: 
     
     Percentage of 0 to 10V [0..100]
 
 Example: 
+=======
+Usage  : `megaind-rpi.getOutputCurrent --stack <id> --channel <channel> `
+
+Example:` mol $ call megaind-rpi.getOutputCurrent --stack 0 --channel 2`; Read the current on 4-20mA out channel 2 on Board 0
+>>>>>>> 08ad3787fe1cb41086428b782db05ef978386198
 
     # Read the voltage input on 0-10V in channel 2 on Board 0
     mol $ call megaind-rpi.getInputVoltage --stack 0 --channel 2
@@ -82,8 +112,14 @@ Example:
 
 # Currents IO
 
+<<<<<<< HEAD
 
 ## setOutputCurrent
+=======
+Usage  :` megaind-rpi.getInputCurrent --stack <id> --channel <channel>`
+
+Example: `mol $ call megaind-rpi.getInputCurrent --stack 0 --channel 2`; Read the voltage input on 4-20mA in channel 2 on Board 0
+>>>>>>> 08ad3787fe1cb41086428b782db05ef978386198
 
     Write 4-20mA output value (mA)
 
@@ -97,10 +133,16 @@ Params:
     channel - selected channel number [1..4]
     value   - percentage of 4 to 20mA [0..100]
 
+<<<<<<< HEAD
 Return: 
 
      0 (Succes)
     -1 (Error)
+=======
+Usage  : `megaind-rpi.setOutputOpenDrain --stack <id> --channel <channel> --value <value>`
+
+Example: `mol $ call megaind-rpi.setOutputOpenDrain --stack 0 --channel 2 --value 10.5`; Set PWM 10.5% to open-drain output channel 2 on Board 0
+>>>>>>> 08ad3787fe1cb41086428b782db05ef978386198
 
 Example:
 
@@ -109,9 +151,15 @@ Example:
     mol $ 0
 
 
+<<<<<<< HEAD
 ## getOutputCurrent 
 
     Read 4-20mA Output current value (mA)
+=======
+Usage  : `megaind-rpi.getOutputOpenDrain --stack <id> --channel <channel>`
+
+Example: `mol $ call megaind-rpi.getOutputOpenDrain --stack 0 --channel 2`; Read the PWM value on open-drain output channel 2 on Board 0
+>>>>>>> 08ad3787fe1cb41086428b782db05ef978386198
 
 Usage  : 
 
@@ -119,12 +167,18 @@ Usage  :
 
 Params: 
 
+<<<<<<< HEAD
     stack   - stack level of the megaind card (selectable from address jumpers [0..7])
     channel - selected channel number [1..4]
 
 Return: 
     
     Percentage of 4 to 20mA [0..100]
+=======
+Usage  : `megaind-rpi.getInputOpto --stack <id> --channel <channel>`
+
+Example: `mol $ call megaind-rpi.getInputOpto --stack 0 --channel 2`; Read Status of opto input pin 2 on Board 0
+>>>>>>> 08ad3787fe1cb41086428b782db05ef978386198
 
 Example:
     
@@ -139,9 +193,15 @@ Example:
 
 Usage  :
 
+<<<<<<< HEAD
     megaind-rpi.getInputCurrent --stack <id> --channel <channel>
 
 Params: 
+=======
+Usage           : `megaind-rpi.getBoardDiagnose --stack <id>`
+
+Example         : `mol $ call megaind-rpi.getBoardDiagnose --stack 0`;
+>>>>>>> 08ad3787fe1cb41086428b782db05ef978386198
 
     stack   - stack level of the megaind card (selectable from address jumpers [0..7])
     channel - selected channel number [1..4]
@@ -152,6 +212,7 @@ Return:
 
 Example: 
 
+<<<<<<< HEAD
     # Read the voltage input on 4-20mA in channel 2 on Board 0
     mol $ call megaind-rpi.getInputCurrent --stack 0 --channel 2 
     mol $ 65.36
@@ -290,3 +351,8 @@ Example:
             local: 'quinta-feira, 27 de maio de 2021 16:01:48 Horário Padrão de Brasília'
     }
 
+=======
+Usage  : `megaind-rpi.getRtc --stack <id>`
+
+Example: `mol $ call megaind-rpi.getRtc --stack 0`; Get the internal RTC time and date on Board 0
+>>>>>>> 08ad3787fe1cb41086428b782db05ef978386198
