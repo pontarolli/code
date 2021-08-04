@@ -1,7 +1,7 @@
 
 # megaind-rpi
 
-This is the nodejs library to control the [Industrial Automation Stackable Card for Raspberry Pi](https://sequentmicrosystems.com/product/raspberry-pi-industrial-automation/) using framework Moleculer. 
+This is the javascript library to control the [Industrial Automation Stackable Card for Raspberry Pi](https://sequentmicrosystems.com/product/raspberry-pi-industrial-automation/) using framework Moleculer. 
 
 ## Setup
 
