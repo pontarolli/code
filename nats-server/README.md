@@ -172,3 +172,5 @@ $ sudo pm2 start "./nats-server -c nats-server.conf" --name nats-server
 │ 0   │ nats-server    │ default     │ N/A     │ fork    │ 25450    │ 0s     │ 0    │ online    │ 0%       │ 7.4mb    │ root     │ disabled │
 └─────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
 ```
+
+nats-server -c ./conf/nats-server.conf

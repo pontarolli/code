@@ -42,7 +42,25 @@ browseable = true
 public = yes
 ```
 
+### GRUB
+Alterar quem inicializa por padrão de Ubuntu para Windows
+```bash
+# Exemplo da tela que aparece ao iniciar o computador
+# [0] Ubuntu
+# [1] Windows 7
+# [2] Windows 10
 
+# Abrir terminal do ubuntu
+$ sudo gedit /etc/default/grub
+
+# Antes
+GRUB_DEFAULT=0 (Ubuntu)
+# Depois
+GRUB_DEFAULT=2 (Windows)
+
+# Atualizar o grub
+sudo update-grub
+```
 ### Node.js LTS (v14.x):
 
 Using Ubuntu
