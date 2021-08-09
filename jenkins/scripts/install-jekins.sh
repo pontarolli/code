@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # run jenkins
 mkdir -p /var/jenkins-home
 chown -R 1000:1000 /var/jenkins-home/
