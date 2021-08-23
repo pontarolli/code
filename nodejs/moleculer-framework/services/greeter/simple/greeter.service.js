@@ -1,19 +1,17 @@
 const { ServiceBroker } = require("moleculer");
 
-// Create a ServiceBroker
-const broker = new ServiceBroker({
-    transporter: "nats://localhost:4222"
-});
+const broker = new ServiceBroker({ transporter: "nats://localhost:4222"});
 
-// Define a service
 broker.createService({
     name: "greeter",
     actions: {
-        hello(ctx) {
-            return 'hello Moleculer';
-        }, 
+		hello: {
+			handler(ctx) {
+				const payload = `hello from greeter@${this.broker.nodeID}`
+				return {payload};
+			}	
+		},
     }
 });
 
-// Start the broker
 broker.start()
